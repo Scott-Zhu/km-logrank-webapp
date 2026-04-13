@@ -1,26 +1,51 @@
 # KM Log-rank Web App
 
-This project is a web application for extracting survival information from Kaplan-Meier curves and computing log-rank test results.
+A minimal Flask starter app for a beginner-friendly course project.
 
-## Project Goal
+## What this project does
 
-The website allows users to upload Kaplan-Meier curve images, extract approximate event-related information, reconstruct survival data, and perform log-rank tests.
+Right now, this project only includes a clean homepage at `/`.
+Analysis features (like KM extraction or log-rank calculations) are intentionally **not implemented yet**.
 
-## Planned Features
+## Project structure
 
-- Upload Kaplan-Meier curve images
-- Extract figure metadata and curve information
-- Reconstruct approximate survival data
-- Compute log-rank test results
-- Display analysis outputs in a simple web interface
+```text
+.
+├── app.py
+├── requirements.txt
+├── README.md
+├── static/
+│   └── styles.css
+└── templates/
+    └── index.html
+```
 
-## Tech Stack
+## Setup
 
-- Python
-- Flask
-- Survival analysis libraries
-- LLM APIs for structured extraction
+1. (Optional but recommended) create and activate a virtual environment:
 
-## Status
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
 
-Initial repository setup in progress.
+2. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+## Run the app
+
+```bash
+python app.py
+```
+
+Then open your browser to:
+
+- <http://127.0.0.1:5000/>
+
+## Notes
+
+- This is a starter template to keep the project simple.
+- Add analysis routes and logic later as separate steps.
