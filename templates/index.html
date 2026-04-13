@@ -10,8 +10,7 @@
     <main class="container">
       <h1>KM Log-rank Web App</h1>
       <p>
-        A beginner-friendly Flask project for building tools related to
-        Kaplan-Meier and log-rank workflows.
+        A beginner-friendly Flask project for Kaplan-Meier and log-rank workflows.
       </p>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -25,7 +24,38 @@
       {% endwith %}
 
       <section class="upload-card">
-        <h2>Upload Kaplan-Meier Image</h2>
+        <h2>Manual Survival Analysis (Log-rank)</h2>
+        <p>
+          Enter two groups of survival records. Use one row per participant with:
+          <code>time,event</code> (or <code>time event</code>).
+          Event should be <code>1</code> for event and <code>0</code> for censored.
+        </p>
+
+        <form action="{{ url_for('manual_logrank') }}" method="post">
+          <label for="group_a_data">Group A records</label>
+          <textarea
+            id="group_a_data"
+            name="group_a_data"
+            rows="8"
+            placeholder="5,1&#10;8,0&#10;12,1"
+            required
+          >{{ manual_group_a }}</textarea>
+
+          <label for="group_b_data">Group B records</label>
+          <textarea
+            id="group_b_data"
+            name="group_b_data"
+            rows="8"
+            placeholder="4,1&#10;9,1&#10;11,0"
+            required
+          >{{ manual_group_b }}</textarea>
+
+          <button type="submit">Run manual log-rank test</button>
+        </form>
+      </section>
+
+      <section class="upload-card">
+        <h2>Upload Kaplan-Meier Image (Automatic Extraction Placeholder)</h2>
         <form action="{{ url_for('upload_image') }}" method="post" enctype="multipart/form-data">
           <label for="image_file">Select image file (PNG, JPG, JPEG)</label>
           <input id="image_file" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" />

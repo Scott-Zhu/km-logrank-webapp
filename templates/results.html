@@ -3,12 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Upload Results | KM Log-rank Web App</title>
+    <title>Results | KM Log-rank Web App</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
     <main class="container">
-      <h1>Upload Results</h1>
+      <h1>Results</h1>
+
+      {% if mode == "manual" %}
+      <p>Manual survival-analysis mode output is shown below.</p>
+
+      <section class="result-card">
+        <h2>Manual Log-rank Test Output</h2>
+        <p><strong>Group A records:</strong> {{ manual_analysis.group_a_count }}</p>
+        <p><strong>Group B records:</strong> {{ manual_analysis.group_b_count }}</p>
+        <p><strong>Log-rank test statistic (chi-square):</strong> {{ "%.4f"|format(manual_analysis.chi_square) }}</p>
+        <p><strong>p-value:</strong> {{ "%.6f"|format(manual_analysis.p_value) }}</p>
+      </section>
+      {% else %}
       <p>Your image upload is complete. Review the preview and placeholder output below.</p>
 
       <section class="result-card">
@@ -24,8 +36,9 @@
         <p>{{ analysis_output.summary }}</p>
         <p><strong>Input file:</strong> {{ analysis_output.input_filename }}</p>
       </section>
+      {% endif %}
 
-      <p><a href="{{ url_for('home') }}">Upload another image</a></p>
+      <p><a href="{{ url_for('home') }}">Back to home</a></p>
     </main>
   </body>
 </html>
