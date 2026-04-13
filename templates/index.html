@@ -24,6 +24,7 @@
       {% endwith %}
 
       <section class="upload-card">
+        <!-- Manual workflow form: posts only to /manual-logrank -->
         <h2>Manual Survival Analysis (Log-rank)</h2>
         <p>
           Enter two groups of survival records. Use one row per participant with:
@@ -55,10 +56,11 @@
       </section>
 
       <section class="upload-card">
-        <h2>Upload Kaplan-Meier Image (Automatic Extraction Placeholder)</h2>
+        <!-- Upload workflow form: posts only to /upload with multipart encoding -->
+        <h2>Upload Kaplan-Meier Image (Metadata Extraction)</h2>
         <form action="{{ url_for('upload_image') }}" method="post" enctype="multipart/form-data">
           <label for="image_file">Select image file (PNG, JPG, JPEG)</label>
-          <input id="image_file" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" />
+          <input id="image_file" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" required />
           <button type="submit">Upload</button>
         </form>
       </section>

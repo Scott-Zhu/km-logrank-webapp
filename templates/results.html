@@ -11,6 +11,7 @@
       <h1>Results</h1>
 
       {% if mode == "manual" %}
+      <!-- Manual results branch -->
       <p>Manual survival-analysis mode output is shown below.</p>
 
       <section class="result-card">
@@ -21,6 +22,7 @@
         <p><strong>p-value:</strong> {{ "%.6f"|format(manual_analysis.p_value) }}</p>
       </section>
       {% else %}
+      <!-- Upload metadata extraction branch -->
       <p>Your image upload is complete. Review the preview and metadata extraction output below.</p>
 
       <section class="result-card">
