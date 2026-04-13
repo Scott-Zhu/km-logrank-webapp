@@ -59,9 +59,25 @@ label {
   font-weight: 600;
 }
 
-input[type="file"] {
+input[type="file"],
+textarea {
   display: block;
+  width: 100%;
   margin-bottom: 12px;
+}
+
+textarea {
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-family: "Courier New", monospace;
+  line-height: 1.4;
+}
+
+code {
+  background: #eef2ff;
+  padding: 2px 5px;
+  border-radius: 4px;
 }
 
 button {

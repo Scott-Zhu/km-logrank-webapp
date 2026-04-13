@@ -6,14 +6,30 @@ A minimal Flask starter app for a beginner-friendly course project.
 
 Right now, this project includes:
 - A clean homepage at `/`
-- A simple image upload form on the homepage that accepts PNG/JPG/JPEG
-- Redirect to a results page after upload
+- A manual survival-analysis mode where users can paste two groups of survival records
+- Backend parsing and validation for survival text input (`time,event` per row)
+- A two-group log-rank test computation in Python
 - A results page at `/results` that shows:
-  - Uploaded image preview
-  - Basic file metadata (filename and content type)
-  - Placeholder "Analysis Output"
+  - Manual log-rank test statistic (chi-square)
+  - p-value
+  - Group record counts
+- A simple image upload form (PNG/JPG/JPEG) for future automatic extraction work
 
-Analysis features (like KM extraction or log-rank calculations) are intentionally **not implemented yet**.
+## Manual input format
+
+Each group is entered in a text box:
+- One record per line
+- Two values per line: `time,event` (or `time event`)
+- `event=1` means event occurred
+- `event=0` means censored
+
+Example:
+
+```text
+5,1
+8,0
+12,1
+```
 
 ## Project structure
 
@@ -57,13 +73,14 @@ Then open your browser to:
 
 ## Route overview
 
-- `GET /` → upload form
+- `GET /` → homepage with manual analysis form and upload form
+- `POST /manual-logrank` → parses manual text input, validates records, computes log-rank test
 - `POST /upload` → validates file, saves file, stores metadata in session, redirects to results
-- `GET /results` → shows uploaded image and placeholder analysis output
+- `GET /results` → shows manual analysis output (if available) or upload placeholder output
 - `GET /uploads/<filename>` → serves uploaded image files
 
 ## Notes
 
-- This is a starter template to keep the project simple.
+- This app is intentionally simple and beginner-focused.
 - Uploaded files are saved to the local `uploads/` folder.
-- Placeholder analysis is intentionally simple and ready to replace later.
+- Automatic KM extraction is still a placeholder for a future step.
