@@ -1,6 +1,15 @@
 from pathlib import Path
 
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import (
+    Flask,
+    flash,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+    url_for,
+)
 from werkzeug.utils import secure_filename
 
 # Create the Flask application object.
@@ -19,6 +28,18 @@ def is_allowed_file(filename: str) -> bool:
         return False
     extension = filename.rsplit(".", 1)[1].lower()
     return extension in app.config["ALLOWED_EXTENSIONS"]
+
+
+def build_placeholder_analysis(file_metadata: dict[str, str]) -> dict[str, str]:
+    """Return placeholder analysis data for the results page."""
+    return {
+        "status": "Placeholder only",
+        "summary": (
+            "Automatic Kaplan-Meier extraction is not implemented yet. "
+            "This panel will show parsed values in a future step."
+        ),
+        "input_filename": file_metadata["filename"],
+    }
 
 
 @app.route("/")
@@ -48,8 +69,38 @@ def upload_image():
     destination = app.config["UPLOAD_FOLDER"] / filename
     file.save(destination)
 
-    flash(f"Upload successful: {filename}", "success")
-    return redirect(url_for("home"))
+    file_metadata = {
+        "filename": filename,
+        "content_type": file.content_type or "Unknown",
+    }
+    session["latest_upload"] = file_metadata
+
+    return redirect(url_for("results"))
+
+
+@app.route("/results")
+def results():
+    """Show the uploaded image and placeholder analysis output."""
+    file_metadata = session.get("latest_upload")
+    if not file_metadata:
+        flash("Upload an image first to view results.", "error")
+        return redirect(url_for("home"))
+
+    analysis_output = build_placeholder_analysis(file_metadata)
+    image_url = url_for("uploaded_file", filename=file_metadata["filename"])
+
+    return render_template(
+        "results.html",
+        file_metadata=file_metadata,
+        image_url=image_url,
+        analysis_output=analysis_output,
+    )
+
+
+@app.route("/uploads/<path:filename>")
+def uploaded_file(filename: str):
+    """Serve uploaded files so they can be displayed on the results page."""
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 
 if __name__ == "__main__":

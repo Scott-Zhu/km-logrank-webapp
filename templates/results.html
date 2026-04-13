@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Upload Results | KM Log-rank Web App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Upload Results</h1>
+      <p>Your image upload is complete. Review the preview and placeholder output below.</p>
+
+      <section class="result-card">
+        <h2>Uploaded Image</h2>
+        <p><strong>Filename:</strong> {{ file_metadata.filename }}</p>
+        <p><strong>Content type:</strong> {{ file_metadata.content_type }}</p>
+        <img class="uploaded-image" src="{{ image_url }}" alt="Uploaded Kaplan-Meier image" />
+      </section>
+
+      <section class="result-card">
+        <h2>Analysis Output</h2>
+        <p><strong>Status:</strong> {{ analysis_output.status }}</p>
+        <p>{{ analysis_output.summary }}</p>
+        <p><strong>Input file:</strong> {{ analysis_output.input_filename }}</p>
+      </section>
+
+      <p><a href="{{ url_for('home') }}">Upload another image</a></p>
+    </main>
+  </body>
+</html>
