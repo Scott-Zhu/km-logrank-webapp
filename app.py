@@ -1,5 +1,6 @@
 from math import erfc, sqrt
 from pathlib import Path
+import json
 
 from flask import (
     Flask,
@@ -12,6 +13,8 @@ from flask import (
     url_for,
 )
 from werkzeug.utils import secure_filename
+
+from metadata_extraction import extract_figure_metadata
 
 # Create the Flask application object.
 app = Flask(__name__)
@@ -159,18 +162,6 @@ def compute_logrank_test(
     }
 
 
-def build_placeholder_analysis(file_metadata: dict[str, str]) -> dict[str, str]:
-    """Return placeholder analysis data for the results page."""
-    return {
-        "status": "Placeholder only",
-        "summary": (
-            "Automatic Kaplan-Meier extraction is not implemented yet. "
-            "This panel will show parsed values in a future step."
-        ),
-        "input_filename": file_metadata["filename"],
-    }
-
-
 @app.route("/")
 def home():
     """Render the homepage."""
@@ -262,7 +253,9 @@ def results():
         flash("Upload an image first or run a manual log-rank test.", "error")
         return redirect(url_for("home"))
 
-    analysis_output = build_placeholder_analysis(file_metadata)
+    upload_path = app.config["UPLOAD_FOLDER"] / file_metadata["filename"]
+    metadata_output = extract_figure_metadata(upload_path)
+    metadata_json = json.dumps(metadata_output, indent=2)
     image_url = url_for("uploaded_file", filename=file_metadata["filename"])
 
     return render_template(
@@ -270,7 +263,8 @@ def results():
         mode="upload",
         file_metadata=file_metadata,
         image_url=image_url,
-        analysis_output=analysis_output,
+        metadata_output=metadata_output,
+        metadata_json=metadata_json,
         manual_analysis=None,
     )
 
