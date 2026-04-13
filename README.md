@@ -4,7 +4,11 @@ A minimal Flask starter app for a beginner-friendly course project.
 
 ## What this project does
 
-Right now, this project only includes a clean homepage at `/`.
+Right now, this project includes:
+- A clean homepage at `/`
+- A simple image upload form on the homepage that accepts PNG/JPG/JPEG
+- Basic validation and upload success/error messaging
+
 Analysis features (like KM extraction or log-rank calculations) are intentionally **not implemented yet**.
 
 ## Project structure
@@ -14,6 +18,7 @@ Analysis features (like KM extraction or log-rank calculations) are intentionall
 ├── app.py
 ├── requirements.txt
 ├── README.md
+├── uploads/
 ├── static/
 │   └── styles.css
 └── templates/
@@ -48,4 +53,5 @@ Then open your browser to:
 ## Notes
 
 - This is a starter template to keep the project simple.
+- Uploaded files are saved to the local `uploads/` folder.
 - Add analysis routes and logic later as separate steps.

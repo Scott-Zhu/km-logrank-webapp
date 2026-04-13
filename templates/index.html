@@ -13,6 +13,25 @@
         A beginner-friendly Flask project for building tools related to
         Kaplan-Meier and log-rank workflows.
       </p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <section aria-live="polite" class="messages">
+        {% for category, message in messages %}
+        <p class="message message-{{ category }}">{{ message }}</p>
+        {% endfor %}
+      </section>
+      {% endif %}
+      {% endwith %}
+
+      <section class="upload-card">
+        <h2>Upload Kaplan-Meier Image</h2>
+        <form action="{{ url_for('upload_image') }}" method="post" enctype="multipart/form-data">
+          <label for="image_file">Select image file (PNG, JPG, JPEG)</label>
+          <input id="image_file" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" />
+          <button type="submit">Upload</button>
+        </form>
+      </section>
     </main>
   </body>
 </html>
