@@ -7,7 +7,11 @@ A minimal Flask starter app for a beginner-friendly course project.
 Right now, this project includes:
 - A clean homepage at `/`
 - A simple image upload form on the homepage that accepts PNG/JPG/JPEG
-- Basic validation and upload success/error messaging
+- Redirect to a results page after upload
+- A results page at `/results` that shows:
+  - Uploaded image preview
+  - Basic file metadata (filename and content type)
+  - Placeholder "Analysis Output"
 
 Analysis features (like KM extraction or log-rank calculations) are intentionally **not implemented yet**.
 
@@ -22,7 +26,8 @@ Analysis features (like KM extraction or log-rank calculations) are intentionall
 ├── static/
 │   └── styles.css
 └── templates/
-    └── index.html
+    ├── index.html
+    └── results.html
 ```
 
 ## Setup
@@ -50,8 +55,15 @@ Then open your browser to:
 
 - <http://127.0.0.1:5000/>
 
+## Route overview
+
+- `GET /` → upload form
+- `POST /upload` → validates file, saves file, stores metadata in session, redirects to results
+- `GET /results` → shows uploaded image and placeholder analysis output
+- `GET /uploads/<filename>` → serves uploaded image files
+
 ## Notes
 
 - This is a starter template to keep the project simple.
 - Uploaded files are saved to the local `uploads/` folder.
-- Add analysis routes and logic later as separate steps.
+- Placeholder analysis is intentionally simple and ready to replace later.
