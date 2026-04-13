@@ -1,0 +1,6 @@
+flask
+lifelines
+pillow
+matplotlib
+numpy
+pandas
