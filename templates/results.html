@@ -47,6 +47,9 @@
         {% if auto_logrank %}
           <p><strong>Mode:</strong> Automatic approximation from uploaded figure</p>
           <p class="small-note">{{ auto_logrank.warning }}</p>
+          {% if auto_logrank.confidence is defined %}
+          <p><strong>Extraction confidence:</strong> {{ "%.3f"|format(auto_logrank.confidence) }}</p>
+          {% endif %}
 
           {% if auto_logrank.available %}
           <h3>Reconstructed Data Summary</h3>
@@ -88,6 +91,9 @@
         {% endif %}
 
         <p><strong>Status:</strong> {{ metadata_output.curve_extraction.status }}</p>
+        {% if metadata_output.curve_extraction.risk_table_row_estimate %}
+        <p><strong>Estimated risk-table rows:</strong> {{ metadata_output.curve_extraction.risk_table_row_estimate }}</p>
+        {% endif %}
 
         <h3>Assumptions</h3>
         <ul>

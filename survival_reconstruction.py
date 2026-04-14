@@ -44,7 +44,9 @@ def _extract_sizes_from_risk_text(number_at_risk_text: list[str], groups_needed:
     return fallback_sizes
 
 
-def infer_initial_group_sizes(metadata_output: dict[str, object], groups_needed: int) -> tuple[list[int], str]:
+def infer_initial_group_sizes(
+    metadata_output: dict[str, object], groups_needed: int
+) -> tuple[list[int], str, bool]:
     legend_text = [
         str(item) for item in metadata_output.get("legend_text", []) if isinstance(item, str)
     ]
@@ -56,13 +58,13 @@ def infer_initial_group_sizes(metadata_output: dict[str, object], groups_needed:
 
     sizes = _extract_sizes_from_legend(legend_text)
     if len(sizes) >= groups_needed:
-        return sizes[:groups_needed], "legend n="
+        return sizes[:groups_needed], "legend n=", False
 
     risk_sizes = _extract_sizes_from_risk_text(number_at_risk_text, groups_needed)
     if len(risk_sizes) >= groups_needed:
-        return risk_sizes[:groups_needed], "number-at-risk text"
+        return risk_sizes[:groups_needed], "number-at-risk text", False
 
-    return [100 for _ in range(groups_needed)], "default assumption (N=100 per group)"
+    return [], "no reliable group-size extraction", True
 
 
 def reconstruct_group_records(

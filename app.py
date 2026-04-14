@@ -272,71 +272,127 @@ def results():
         auto_logrank = None
 
         curves = metadata_output.get("curve_extraction", {}).get("curves", [])
-        if isinstance(curves, list) and len(curves) >= 2:
-            initial_sizes, size_source = infer_initial_group_sizes(metadata_output, 2)
+        curve_extraction = metadata_output.get("curve_extraction", {})
+        confidence = float(curve_extraction.get("confidence", 0.0))
+        axis_status = str(curve_extraction.get("axis_calibration", {}).get("status", "failed"))
+        curves_list = curves if isinstance(curves, list) else []
+        valid_curve_count = int(curve_extraction.get("valid_curve_count", len(curves_list)))
+        usable_curve_count = min(valid_curve_count, len(curves_list))
 
-            curve_a = curves[0]
-            curve_b = curves[1]
-            group_a = reconstruct_group_records(
-                str(curve_a.get("name", "curve_1")),
-                list(curve_a.get("points", [])),
-                initial_sizes[0],
-            )
-            group_b = reconstruct_group_records(
-                str(curve_b.get("name", "curve_2")),
-                list(curve_b.get("points", [])),
-                initial_sizes[1],
-            )
+        if not curves_list or usable_curve_count == 0:
+            auto_logrank = {
+                "available": False,
+                "warning": "No valid curves were detected from this image.",
+                "message": "Automatic analysis is unavailable. Review extraction output or use manual mode.",
+                "confidence": confidence,
+            }
+        elif usable_curve_count < 2:
+            auto_logrank = {
+                "available": False,
+                "warning": "Fewer than two valid groups were detected.",
+                "message": "Single-group or incomplete extraction detected. Log-rank analysis was skipped.",
+                "confidence": confidence,
+            }
+        elif usable_curve_count > 2:
+            auto_logrank = {
+                "available": False,
+                "warning": f"{usable_curve_count} groups were detected.",
+                "message": (
+                    "Automatic log-rank is limited to two-group comparisons in this prototype. "
+                    "Please use manual mode or reduce to two groups."
+                ),
+                "confidence": confidence,
+            }
+        else:
+            initial_sizes, size_source, used_default_sizes = infer_initial_group_sizes(metadata_output, 2)
 
-            if group_a.records and group_b.records:
-                try:
-                    logrank_output = compute_logrank_test(group_a.records, group_b.records)
-                    auto_logrank = {
-                        "available": True,
-                        "warning": (
-                            "Approximate automatic mode: records are reconstructed from "
-                            "digitized figure curves, not patient-level source data."
-                        ),
-                        "group_a_name": group_a.name,
-                        "group_b_name": group_b.name,
-                        "group_a_count": len(group_a.records),
-                        "group_b_count": len(group_b.records),
-                        "group_a_events": group_a.event_count,
-                        "group_b_events": group_b.event_count,
-                        "group_a_censored": group_a.censor_count,
-                        "group_b_censored": group_b.censor_count,
-                        "initial_size_source": size_source,
-                        "group_a_initial_n": group_a.initial_n,
-                        "group_b_initial_n": group_b.initial_n,
-                        "chi_square": logrank_output["chi_square"],
-                        "p_value": logrank_output["p_value"],
-                    }
-                except ValueError as exc:
-                    auto_logrank = {
-                        "available": False,
-                        "warning": (
-                            "Approximate automatic mode failed to produce a stable log-rank "
-                            "result from this figure."
-                        ),
-                        "message": str(exc),
-                    }
-            else:
+            curve_a = curves_list[0] if len(curves_list) > 0 and isinstance(curves_list[0], dict) else {}
+            curve_b = curves_list[1] if len(curves_list) > 1 and isinstance(curves_list[1], dict) else {}
+            curve_a_points = curve_a.get("points", []) if isinstance(curve_a, dict) else []
+            curve_b_points = curve_b.get("points", []) if isinstance(curve_b, dict) else []
+
+            sanity_failures: list[str] = []
+            if not isinstance(curve_a_points, list) or not curve_a_points:
+                sanity_failures.append("curve group A points were unavailable")
+            if not isinstance(curve_b_points, list) or not curve_b_points:
+                sanity_failures.append("curve group B points were unavailable")
+            if len(initial_sizes) < 2:
+                sanity_failures.append("reliable group sizes were unavailable")
+
+            if confidence < 0.65:
+                sanity_failures.append("extraction confidence is low")
+            if axis_status not in {"ok", "ok_numeric"}:
+                sanity_failures.append("axis calibration failed")
+            if used_default_sizes:
+                sanity_failures.append("group sizes depended on default assumptions")
+
+            if sanity_failures:
                 auto_logrank = {
                     "available": False,
                     "warning": (
-                        "Approximate automatic mode could not reconstruct enough records "
-                        "from extracted curves."
+                        "Approximate automatic mode detected curves but did not run formal "
+                        "hypothesis testing because quality checks failed."
                     ),
-                    "message": "Partial extraction detected. Try manual mode for validated inputs.",
+                    "message": "Log-rank skipped: " + ", ".join(sanity_failures) + ".",
+                    "confidence": confidence,
+                    "initial_size_source": size_source,
                 }
-        elif isinstance(curves, list):
-            auto_logrank = {
-                "available": False,
-                "warning": (
-                    "Approximate automatic mode requires at least two extracted curves."
-                ),
-                "message": "Partial extraction detected. Log-rank analysis was skipped.",
-            }
+            else:
+                group_a = reconstruct_group_records(
+                    str(curve_a.get("name", "curve_1")),
+                    curve_a_points,
+                    initial_sizes[0],
+                )
+                group_b = reconstruct_group_records(
+                    str(curve_b.get("name", "curve_2")),
+                    curve_b_points,
+                    initial_sizes[1],
+                )
+
+                if group_a.records and group_b.records:
+                    try:
+                        logrank_output = compute_logrank_test(group_a.records, group_b.records)
+                        auto_logrank = {
+                            "available": True,
+                            "warning": (
+                                "Approximate automatic mode: records are reconstructed from "
+                                "digitized figure curves, not patient-level source data."
+                            ),
+                            "group_a_name": group_a.name,
+                            "group_b_name": group_b.name,
+                            "group_a_count": len(group_a.records),
+                            "group_b_count": len(group_b.records),
+                            "group_a_events": group_a.event_count,
+                            "group_b_events": group_b.event_count,
+                            "group_a_censored": group_a.censor_count,
+                            "group_b_censored": group_b.censor_count,
+                            "initial_size_source": size_source,
+                            "group_a_initial_n": group_a.initial_n,
+                            "group_b_initial_n": group_b.initial_n,
+                            "confidence": confidence,
+                            "chi_square": logrank_output["chi_square"],
+                            "p_value": logrank_output["p_value"],
+                        }
+                    except ValueError as exc:
+                        auto_logrank = {
+                            "available": False,
+                            "warning": (
+                                "Approximate automatic mode failed to produce a stable log-rank "
+                                "result from this figure."
+                            ),
+                            "message": str(exc),
+                            "confidence": confidence,
+                        }
+                else:
+                    auto_logrank = {
+                        "available": False,
+                        "warning": (
+                            "Approximate automatic mode could not reconstruct enough records "
+                            "from extracted curves."
+                        ),
+                        "message": "Partial extraction detected. Try manual mode for validated inputs.",
+                        "confidence": confidence,
+                    }
 
         return render_template(
             "results.html",
