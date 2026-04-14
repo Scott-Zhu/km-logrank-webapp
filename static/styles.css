@@ -113,6 +113,11 @@ button:hover {
   color: #991b1b;
 }
 
+.message-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 a {
   color: #1d4ed8;
 }
