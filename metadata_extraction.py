@@ -113,17 +113,38 @@ def _estimate_risk_table_rows(image: Image.Image, risk_table_area: dict[str, int
     y0, y1 = risk_table_area["y0"], risk_table_area["y1"]
     if y1 <= y0:
         return 0
-    active_rows: list[int] = []
+    densities: list[float] = []
     for y in range(y0, y1 + 1):
-        if _row_nonwhite_density(image, risk_table_area, y) > 0.06:
-            active_rows.append(y)
-    if not active_rows:
+        densities.append(_row_nonwhite_density(image, risk_table_area, y))
+    if not densities:
         return 0
-    groups = 1
-    for prev, curr in zip(active_rows, active_rows[1:]):
-        if curr - prev > 4:
-            groups += 1
-    return groups
+
+    # Smooth row profile to avoid splitting one text row into multiple mini-clusters.
+    smoothed: list[float] = []
+    for idx in range(len(densities)):
+        left = max(0, idx - 2)
+        right = min(len(densities), idx + 3)
+        smoothed.append(sum(densities[left:right]) / (right - left))
+
+    active = [index for index, value in enumerate(smoothed) if value > 0.03]
+    if not active:
+        return 0
+
+    runs: list[tuple[int, int]] = []
+    run_start = active[0]
+    prev = active[0]
+    for current in active[1:]:
+        if current - prev <= 2:
+            prev = current
+            continue
+        runs.append((run_start, prev))
+        run_start = current
+        prev = current
+    runs.append((run_start, prev))
+
+    # Keep only text-like row bands.
+    text_runs = [(start, end) for start, end in runs if (end - start + 1) >= 3]
+    return len(text_runs)
 
 
 def _split_plot_and_risk_table(image: Image.Image, content_area: dict[str, int]) -> tuple[dict[str, int], dict[str, int] | None]:
@@ -342,8 +363,69 @@ def _extract_component_curve_points(
     return monotonic
 
 
+def _simplify_step_points(
+    points: list[dict[str, float]], time_tolerance: float = 0.01, survival_tolerance: float = 0.008
+) -> list[dict[str, float]]:
+    """Compress dense traces into KM-like step breakpoints."""
+    if len(points) < 3:
+        return points
+
+    ordered = sorted(points, key=lambda point: float(point["time"]))
+    simplified: list[dict[str, float]] = []
+
+    plateau_survival = float(ordered[0]["survival_probability"])
+    plateau_start_time = float(ordered[0]["time"])
+    plateau_end_time = plateau_start_time
+    simplified.append({"time": round(plateau_start_time, 4), "survival_probability": round(plateau_survival, 4)})
+
+    for point in ordered[1:]:
+        current_time = float(point["time"])
+        current_survival = float(point["survival_probability"])
+        if abs(current_survival - plateau_survival) <= survival_tolerance:
+            plateau_end_time = current_time
+            continue
+
+        if plateau_end_time - plateau_start_time > time_tolerance:
+            simplified.append(
+                {
+                    "time": round(plateau_end_time, 4),
+                    "survival_probability": round(plateau_survival, 4),
+                }
+            )
+
+        plateau_start_time = current_time
+        plateau_end_time = current_time
+        plateau_survival = min(plateau_survival, current_survival)
+        simplified.append(
+            {
+                "time": round(current_time, 4),
+                "survival_probability": round(plateau_survival, 4),
+            }
+        )
+
+    if plateau_end_time - plateau_start_time > time_tolerance:
+        simplified.append(
+            {
+                "time": round(plateau_end_time, 4),
+                "survival_probability": round(plateau_survival, 4),
+            }
+        )
+
+    # Final dedupe pass for near-identical adjacent points.
+    deduped = [simplified[0]]
+    for point in simplified[1:]:
+        previous = deduped[-1]
+        same_time = abs(float(point["time"]) - float(previous["time"])) <= time_tolerance
+        same_survival = abs(float(point["survival_probability"]) - float(previous["survival_probability"])) <= survival_tolerance
+        if same_time and same_survival:
+            continue
+        deduped.append(point)
+
+    return deduped
+
+
 def _curve_quality(points: list[dict[str, float]]) -> float:
-    if len(points) < 8:
+    if len(points) < 3:
         return 0.0
     drops = 0
     flat = 0
@@ -354,7 +436,8 @@ def _curve_quality(points: list[dict[str, float]]) -> float:
         else:
             flat += 1
     smoothness = flat / max(1, len(points) - 1)
-    step_presence = min(1.0, drops / 4.0)
+    expected_steps = max(1.0, (len(points) - 1) / 2.5)
+    step_presence = min(1.0, drops / expected_steps)
     return round((0.6 * step_presence) + (0.4 * smoothness), 3)
 
 
@@ -387,6 +470,10 @@ def _deduplicate_curves(curves: list[dict[str, object]]) -> list[dict[str, objec
             continue
         matched_index = None
         for index, existing in enumerate(deduped):
+            existing_color = tuple(existing.get("stroke_color_rgb", [0, 0, 0]))
+            candidate_color = tuple(curve.get("stroke_color_rgb", [0, 0, 0]))
+            if _distance_rgb(existing_color, candidate_color) > 48:
+                continue
             similarity = _curve_similarity(
                 list(existing.get("points", [])),
                 points,
@@ -457,6 +544,7 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
                 "Time axis is left-to-right and survival axis is top-to-bottom.",
                 "Curve points are returned in normalized units [0,1].",
                 "Extracted points are approximate visual traces, not exact source data.",
+                "Output points are simplified step breakpoints with tolerance-based compression.",
             ],
             "limitations": [
                 "May fail for low contrast, overlapping curves, heavy grid lines, or anti-aliased markers.",
@@ -500,10 +588,6 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
                         continue
                     if touches_left and touches_bottom:
                         continue
-                    thickness = _component_thickness(component)
-                    if thickness > 8.0:
-                        # likely confidence ribbon/fill, not a thin KM curve stroke
-                        continue
                     filtered_components.append(component)
 
             # Merge anti-aliased shades/components by similar mean color.
@@ -523,10 +607,14 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
 
             extracted_curves: list[dict[str, object]] = []
             for index, group in enumerate(merged_groups):
-                points = _extract_component_curve_points(group["pixels"], plot_area)
+                raw_points = _extract_component_curve_points(group["pixels"], plot_area)
+                points = _simplify_step_points(raw_points)
                 quality = _curve_quality(points)
                 coverage = _curve_coverage(points)
-                if len(points) < 14 or quality < 0.45 or coverage < 0.35:
+                thickness = _component_thickness(group["pixels"])
+                if len(points) < 3 or quality < 0.45 or coverage < 0.35:
+                    continue
+                if thickness > 8.0 and quality < 0.75:
                     continue
 
                 extracted_curves.append(
@@ -535,11 +623,30 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
                         "stroke_color_rgb": list(group["mean_color"]),
                         "quality": quality,
                         "coverage": round(coverage, 3),
+                        "raw_point_count": len(raw_points),
+                        "simplified_point_count": len(points),
+                        "thickness": round(thickness, 3),
                         "points": points,
                     }
                 )
 
             extracted_curves = _deduplicate_curves(extracted_curves)
+            thin_curves = [curve for curve in extracted_curves if float(curve.get("thickness", 0.0)) <= 8.0]
+            if thin_curves:
+                filtered_for_bands: list[dict[str, object]] = []
+                for curve in extracted_curves:
+                    thickness = float(curve.get("thickness", 0.0))
+                    if thickness <= 8.0:
+                        filtered_for_bands.append(curve)
+                        continue
+                    current_color = tuple(curve.get("stroke_color_rgb", [0, 0, 0]))
+                    has_thin_neighbor = any(
+                        _distance_rgb(current_color, tuple(other.get("stroke_color_rgb", [0, 0, 0]))) <= 190
+                        for other in thin_curves
+                    )
+                    if not has_thin_neighbor:
+                        filtered_for_bands.append(curve)
+                extracted_curves = filtered_for_bands
 
             if extracted_curves:
                 extracted_curves.sort(key=lambda curve: float(curve.get("quality", 0.0)), reverse=True)
@@ -558,6 +665,7 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
                 curve_section["messages"] = [
                     "Heuristic extraction succeeded for one or more visible curves.",
                     "Values are normalized and approximate; lower risk-table region is excluded from curve normalization.",
+                    "Curve traces are simplified into Kaplan-Meier-like step breakpoints using tolerance-based compression.",
                 ]
             else:
                 curve_section["status"] = "fallback"
@@ -674,6 +782,9 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
     number_rows = _extract_numeric_rows(risk_lines or lines)
     if number_rows:
         number_at_risk_lines.extend(number_rows[:8])
+        row_guess_from_text = min(8, len(number_rows))
+        current_guess = int(base_output["curve_extraction"].get("risk_table_row_estimate", 0))
+        base_output["curve_extraction"]["risk_table_row_estimate"] = max(current_guess, row_guess_from_text)
 
     # Deduplicate while preserving order.
     def dedupe(items: list[str]) -> list[str]:
