@@ -15,6 +15,7 @@ from flask import (
 from werkzeug.utils import secure_filename
 
 from metadata_extraction import extract_figure_metadata
+from survival_reconstruction import infer_initial_group_sizes, reconstruct_group_records
 
 # Create the Flask application object.
 app = Flask(__name__)
@@ -268,6 +269,74 @@ def results():
         metadata_output = extract_figure_metadata(upload_path)
         metadata_json = json.dumps(metadata_output, indent=2)
         image_url = url_for("uploaded_file", filename=file_metadata["filename"])
+        auto_logrank = None
+
+        curves = metadata_output.get("curve_extraction", {}).get("curves", [])
+        if isinstance(curves, list) and len(curves) >= 2:
+            initial_sizes, size_source = infer_initial_group_sizes(metadata_output, 2)
+
+            curve_a = curves[0]
+            curve_b = curves[1]
+            group_a = reconstruct_group_records(
+                str(curve_a.get("name", "curve_1")),
+                list(curve_a.get("points", [])),
+                initial_sizes[0],
+            )
+            group_b = reconstruct_group_records(
+                str(curve_b.get("name", "curve_2")),
+                list(curve_b.get("points", [])),
+                initial_sizes[1],
+            )
+
+            if group_a.records and group_b.records:
+                try:
+                    logrank_output = compute_logrank_test(group_a.records, group_b.records)
+                    auto_logrank = {
+                        "available": True,
+                        "warning": (
+                            "Approximate automatic mode: records are reconstructed from "
+                            "digitized figure curves, not patient-level source data."
+                        ),
+                        "group_a_name": group_a.name,
+                        "group_b_name": group_b.name,
+                        "group_a_count": len(group_a.records),
+                        "group_b_count": len(group_b.records),
+                        "group_a_events": group_a.event_count,
+                        "group_b_events": group_b.event_count,
+                        "group_a_censored": group_a.censor_count,
+                        "group_b_censored": group_b.censor_count,
+                        "initial_size_source": size_source,
+                        "group_a_initial_n": group_a.initial_n,
+                        "group_b_initial_n": group_b.initial_n,
+                        "chi_square": logrank_output["chi_square"],
+                        "p_value": logrank_output["p_value"],
+                    }
+                except ValueError as exc:
+                    auto_logrank = {
+                        "available": False,
+                        "warning": (
+                            "Approximate automatic mode failed to produce a stable log-rank "
+                            "result from this figure."
+                        ),
+                        "message": str(exc),
+                    }
+            else:
+                auto_logrank = {
+                    "available": False,
+                    "warning": (
+                        "Approximate automatic mode could not reconstruct enough records "
+                        "from extracted curves."
+                    ),
+                    "message": "Partial extraction detected. Try manual mode for validated inputs.",
+                }
+        elif isinstance(curves, list):
+            auto_logrank = {
+                "available": False,
+                "warning": (
+                    "Approximate automatic mode requires at least two extracted curves."
+                ),
+                "message": "Partial extraction detected. Log-rank analysis was skipped.",
+            }
 
         return render_template(
             "results.html",
@@ -277,6 +346,7 @@ def results():
             metadata_output=metadata_output,
             metadata_json=metadata_json,
             metadata_data=metadata_output,
+            auto_logrank=auto_logrank,
             manual_analysis=None,
         )
 
