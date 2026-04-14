@@ -272,12 +272,16 @@ def _extract_component_curve_points(
 
     sorted_x = sorted(columns.keys())
     reduced: list[dict[str, float]] = []
+    x_min = sorted_x[0]
+    x_max = sorted_x[-1]
+    span_x = max(1, x_max - x_min)
     for x in sorted_x:
         ys = sorted(columns[x])
         median_y = ys[len(ys) // 2]
         reduced.append(
             {
-                "time": round(max(0.0, min(1.0, (x - x0) / plot_width)), 4),
+                # Normalize per-trace span so the visible trace starts near time=0.
+                "time": round(max(0.0, min(1.0, (x - x_min) / span_x)), 4),
                 "survival_probability": round(
                     max(0.0, min(1.0, 1.0 - ((median_y - y0) / plot_height))),
                     4,
@@ -301,6 +305,13 @@ def _extract_component_curve_points(
                 "survival_probability": round(best_so_far, 4),
             }
         )
+    if monotonic:
+        start_survival = max(0.01, float(monotonic[0]["survival_probability"]))
+        for point in monotonic:
+            rescaled = min(1.0, float(point["survival_probability"]) / start_survival)
+            point["survival_probability"] = round(rescaled, 4)
+        monotonic[0]["time"] = 0.0
+        monotonic[0]["survival_probability"] = 1.0
     return monotonic
 
 
@@ -318,6 +329,57 @@ def _curve_quality(points: list[dict[str, float]]) -> float:
     smoothness = flat / max(1, len(points) - 1)
     step_presence = min(1.0, drops / 4.0)
     return round((0.6 * step_presence) + (0.4 * smoothness), 3)
+
+
+def _curve_coverage(points: list[dict[str, float]]) -> float:
+    if len(points) < 2:
+        return 0.0
+    return max(0.0, min(1.0, float(points[-1]["time"]) - float(points[0]["time"])))
+
+
+def _curve_similarity(a: list[dict[str, float]], b: list[dict[str, float]]) -> float:
+    """Return similarity score in [0,1] for two monotone traces."""
+    if len(a) < 6 or len(b) < 6:
+        return 0.0
+
+    a_map = {round(float(point["time"]), 2): float(point["survival_probability"]) for point in a}
+    b_map = {round(float(point["time"]), 2): float(point["survival_probability"]) for point in b}
+    shared = sorted(set(a_map.keys()) & set(b_map.keys()))
+    if len(shared) < 10:
+        return 0.0
+
+    avg_abs_diff = sum(abs(a_map[t] - b_map[t]) for t in shared) / len(shared)
+    return max(0.0, min(1.0, 1.0 - (avg_abs_diff / 0.12)))
+
+
+def _deduplicate_curves(curves: list[dict[str, object]]) -> list[dict[str, object]]:
+    deduped: list[dict[str, object]] = []
+    for curve in curves:
+        points = curve.get("points", [])
+        if not isinstance(points, list):
+            continue
+        matched_index = None
+        for index, existing in enumerate(deduped):
+            similarity = _curve_similarity(
+                list(existing.get("points", [])),
+                points,
+            )
+            if similarity >= 0.82:
+                matched_index = index
+                break
+        if matched_index is None:
+            deduped.append(curve)
+            continue
+
+        existing = deduped[matched_index]
+        existing_quality = float(existing.get("quality", 0.0))
+        candidate_quality = float(curve.get("quality", 0.0))
+        existing_coverage = float(existing.get("coverage", 0.0))
+        candidate_coverage = float(curve.get("coverage", 0.0))
+
+        if (candidate_quality, candidate_coverage) > (existing_quality, existing_coverage):
+            deduped[matched_index] = curve
+    return deduped
 
 
 def _curve_name(index: int, color: tuple[int, int, int]) -> str:
@@ -418,7 +480,8 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
             for index, group in enumerate(merged_groups):
                 points = _extract_component_curve_points(group["pixels"], plot_area)
                 quality = _curve_quality(points)
-                if len(points) < 8 or quality < 0.28:
+                coverage = _curve_coverage(points)
+                if len(points) < 14 or quality < 0.45 or coverage < 0.35:
                     continue
 
                 extracted_curves.append(
@@ -426,9 +489,12 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
                         "name": _curve_name(index, group["mean_color"]),
                         "stroke_color_rgb": list(group["mean_color"]),
                         "quality": quality,
+                        "coverage": round(coverage, 3),
                         "points": points,
                     }
                 )
+
+            extracted_curves = _deduplicate_curves(extracted_curves)
 
             if extracted_curves:
                 extracted_curves.sort(key=lambda curve: float(curve.get("quality", 0.0)), reverse=True)
