@@ -23,13 +23,52 @@
       </section>
       {% else %}
       <!-- Upload metadata extraction branch -->
-      <p>Your image upload is complete. Review the preview and metadata extraction output below.</p>
+      <p>
+        Your image upload is complete. You are in <strong>automatic approximation mode</strong>
+        (figure extraction), which is separate from manual survival-record mode.
+      </p>
 
       <section class="result-card">
         <h2>Uploaded Image</h2>
         <p><strong>Filename:</strong> {{ file_metadata.filename }}</p>
         <p><strong>Content type:</strong> {{ file_metadata.content_type }}</p>
         <img class="uploaded-image" src="{{ image_url }}" alt="Uploaded Kaplan-Meier image" />
+      </section>
+
+      <section class="result-card">
+        <h2>Approximate Log-rank from Reconstructed Curves</h2>
+        <div class="message message-warning">
+          <strong>Important:</strong>
+          This result is reconstructed approximately from plotted curves and optional
+          number-at-risk OCR text. It is <strong>not</strong> equivalent to a validated
+          patient-level survival analysis.
+        </div>
+
+        {% if auto_logrank %}
+          <p><strong>Mode:</strong> Automatic approximation from uploaded figure</p>
+          <p class="small-note">{{ auto_logrank.warning }}</p>
+          {% if auto_logrank.confidence is defined %}
+          <p><strong>Extraction confidence:</strong> {{ "%.3f"|format(auto_logrank.confidence) }}</p>
+          {% endif %}
+
+          {% if auto_logrank.available %}
+          <h3>Reconstructed Data Summary</h3>
+          <ul>
+            <li><strong>{{ auto_logrank.group_a_name }}</strong>: {{ auto_logrank.group_a_count }} records (events: {{ auto_logrank.group_a_events }}, censored: {{ auto_logrank.group_a_censored }}, initial N assumption: {{ auto_logrank.group_a_initial_n }})</li>
+            <li><strong>{{ auto_logrank.group_b_name }}</strong>: {{ auto_logrank.group_b_count }} records (events: {{ auto_logrank.group_b_events }}, censored: {{ auto_logrank.group_b_censored }}, initial N assumption: {{ auto_logrank.group_b_initial_n }})</li>
+            <li><strong>Initial size source:</strong> {{ auto_logrank.initial_size_source }}</li>
+          </ul>
+
+          <h3>Approximate Log-rank Output</h3>
+          <p><strong>Log-rank test statistic (chi-square):</strong> {{ "%.4f"|format(auto_logrank.chi_square) }}</p>
+          <p><strong>p-value:</strong> {{ "%.6f"|format(auto_logrank.p_value) }}</p>
+          {% else %}
+          <p><strong>Approximate log-rank status:</strong> unavailable for this upload.</p>
+          <p class="small-note">{{ auto_logrank.message }}</p>
+          {% endif %}
+        {% else %}
+        <p>Approximate mode did not run because no curve extraction payload was available.</p>
+        {% endif %}
       </section>
 
       <section class="result-card">
