@@ -276,6 +276,7 @@ def results():
             image_url=image_url,
             metadata_output=metadata_output,
             metadata_json=metadata_json,
+            metadata_data=metadata_output,
             manual_analysis=None,
         )
 

@@ -126,3 +126,17 @@ a {
   font-size: 0.9rem;
   line-height: 1.45;
 }
+
+#curve-svg {
+  width: 100%;
+  max-width: 620px;
+  height: auto;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.small-note {
+  font-size: 0.9rem;
+  color: #4b5563;
+}
