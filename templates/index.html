@@ -53,16 +53,18 @@
 
           <button type="submit">Run manual log-rank test</button>
         </form>
+        <p>This prototype attempts approximate curve-point extraction and may fall back to metadata-only output.</p>
       </section>
 
       <section class="upload-card">
         <!-- Upload workflow form: posts only to /upload with multipart encoding -->
-        <h2>Upload Kaplan-Meier Image (Metadata Extraction)</h2>
+        <h2>Upload Kaplan-Meier Image (Metadata + Curve Digitization Prototype)</h2>
         <form action="{{ url_for('upload_image') }}" method="post" enctype="multipart/form-data">
           <label for="image_file">Select image file (PNG, JPG, JPEG)</label>
           <input id="image_file" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" required />
           <button type="submit">Upload</button>
         </form>
+        <p>This prototype attempts approximate curve-point extraction and may fall back to metadata-only output.</p>
       </section>
     </main>
   </body>

@@ -33,12 +33,56 @@
       </section>
 
       <section class="result-card">
-        <h2>Metadata Extraction</h2>
-        <p><strong>Module:</strong> metadata extraction</p>
+        <h2>Curve Digitization Prototype</h2>
         <p>
-          This is an approximate OCR step for figure metadata only.
-          It does <strong>not</strong> reconstruct patient-level data.
+          This is a heuristic extraction prototype. It estimates normalized
+          <code>(time, survival_probability)</code> points from visible curves.
+          It does <strong>not</strong> recover patient-level event times.
         </p>
+
+        {% if metadata_output.curve_extraction.messages %}
+        <div class="message message-error">
+          <strong>Extraction message:</strong>
+          <ul>
+            {% for item in metadata_output.curve_extraction.messages %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        <p><strong>Status:</strong> {{ metadata_output.curve_extraction.status }}</p>
+
+        <h3>Assumptions</h3>
+        <ul>
+          {% for item in metadata_output.curve_extraction.assumptions %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+
+        <h3>Limitations</h3>
+        <ul>
+          {% for item in metadata_output.curve_extraction.limitations %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+
+        {% if metadata_output.curve_extraction.curves %}
+        <h3>Extracted Curves (Normalized Plot)</h3>
+        <svg id="curve-svg" viewBox="0 0 620 380" role="img" aria-label="Extracted Kaplan-Meier curves"></svg>
+        <p class="small-note">X axis: normalized time [0,1], Y axis: normalized survival probability [0,1]</p>
+        {% else %}
+        <p>No curve point data was extracted for this image.</p>
+        {% endif %}
+
+        <h3>Structured JSON</h3>
+        <pre class="json-output">{{ metadata_json }}</pre>
+      </section>
+
+      <section class="result-card">
+        <h2>Metadata Extraction (OCR)</h2>
+        <p><strong>Module:</strong> metadata extraction</p>
+        <p>This OCR block is approximate and intended for figure-level labels only.</p>
 
         {% if metadata_output.messages %}
         <div class="message message-error">
@@ -50,13 +94,57 @@
           </ul>
         </div>
         {% endif %}
-
-        <h3>Structured JSON</h3>
-        <pre class="json-output">{{ metadata_json }}</pre>
       </section>
       {% endif %}
 
       <p><a href="{{ url_for('home') }}">Back to home</a></p>
     </main>
+
+    {% if mode == "upload" and metadata_output.curve_extraction.curves %}
+    <script>
+      (() => {
+        const payload = {{ metadata_data | tojson }};
+        const svg = document.getElementById("curve-svg");
+        if (!svg || !payload.curve_extraction || !payload.curve_extraction.curves) {
+          return;
+        }
+
+        const width = 620;
+        const height = 380;
+        const margin = { left: 56, right: 16, top: 20, bottom: 42 };
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+
+        const toX = (value) => margin.left + (value * innerWidth);
+        const toY = (value) => margin.top + ((1 - value) * innerHeight);
+
+        const axis = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        axis.setAttribute("d", `M ${margin.left} ${margin.top} V ${height - margin.bottom} H ${width - margin.right}`);
+        axis.setAttribute("stroke", "#374151");
+        axis.setAttribute("fill", "none");
+        axis.setAttribute("stroke-width", "1.5");
+        svg.appendChild(axis);
+
+        payload.curve_extraction.curves.forEach((curve) => {
+          if (!curve.points || curve.points.length === 0) {
+            return;
+          }
+
+          const rgb = curve.stroke_color_rgb || [55, 65, 81];
+          const stroke = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+          const path = curve.points
+            .map((point, index) => `${index === 0 ? "M" : "L"} ${toX(point.time)} ${toY(point.survival_probability)}`)
+            .join(" ");
+
+          const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          line.setAttribute("d", path);
+          line.setAttribute("stroke", stroke);
+          line.setAttribute("fill", "none");
+          line.setAttribute("stroke-width", "2");
+          svg.appendChild(line);
+        });
+      })();
+    </script>
+    {% endif %}
   </body>
 </html>
