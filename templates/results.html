@@ -11,6 +11,7 @@
       <h1>Results</h1>
 
       {% if mode == "manual" %}
+      <!-- Manual results branch -->
       <p>Manual survival-analysis mode output is shown below.</p>
 
       <section class="result-card">
@@ -21,7 +22,8 @@
         <p><strong>p-value:</strong> {{ "%.6f"|format(manual_analysis.p_value) }}</p>
       </section>
       {% else %}
-      <p>Your image upload is complete. Review the preview and placeholder output below.</p>
+      <!-- Upload metadata extraction branch -->
+      <p>Your image upload is complete. Review the preview and metadata extraction output below.</p>
 
       <section class="result-card">
         <h2>Uploaded Image</h2>
@@ -31,10 +33,26 @@
       </section>
 
       <section class="result-card">
-        <h2>Analysis Output</h2>
-        <p><strong>Status:</strong> {{ analysis_output.status }}</p>
-        <p>{{ analysis_output.summary }}</p>
-        <p><strong>Input file:</strong> {{ analysis_output.input_filename }}</p>
+        <h2>Metadata Extraction</h2>
+        <p><strong>Module:</strong> metadata extraction</p>
+        <p>
+          This is an approximate OCR step for figure metadata only.
+          It does <strong>not</strong> reconstruct patient-level data.
+        </p>
+
+        {% if metadata_output.messages %}
+        <div class="message message-error">
+          <strong>Helpful message:</strong>
+          <ul>
+            {% for item in metadata_output.messages %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        <h3>Structured JSON</h3>
+        <pre class="json-output">{{ metadata_json }}</pre>
       </section>
       {% endif %}
 

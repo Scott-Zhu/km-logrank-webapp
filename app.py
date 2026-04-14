@@ -1,5 +1,6 @@
 from math import erfc, sqrt
 from pathlib import Path
+import json
 
 from flask import (
     Flask,
@@ -12,6 +13,8 @@ from flask import (
     url_for,
 )
 from werkzeug.utils import secure_filename
+
+from metadata_extraction import extract_figure_metadata
 
 # Create the Flask application object.
 app = Flask(__name__)
@@ -159,18 +162,6 @@ def compute_logrank_test(
     }
 
 
-def build_placeholder_analysis(file_metadata: dict[str, str]) -> dict[str, str]:
-    """Return placeholder analysis data for the results page."""
-    return {
-        "status": "Placeholder only",
-        "summary": (
-            "Automatic Kaplan-Meier extraction is not implemented yet. "
-            "This panel will show parsed values in a future step."
-        ),
-        "input_filename": file_metadata["filename"],
-    }
-
-
 @app.route("/")
 def home():
     """Render the homepage."""
@@ -206,7 +197,12 @@ def upload_image():
         "filename": filename,
         "content_type": file.content_type or "Unknown",
     }
+    # Keep upload and manual analysis workflows separate in session state.
     session["latest_upload"] = file_metadata
+    session["result_mode"] = "upload"
+
+    # Clear stale manual output so the upload flow cannot render manual results.
+    session.pop("manual_analysis", None)
 
     return redirect(url_for("results"))
 
@@ -232,12 +228,17 @@ def manual_logrank():
             400,
         )
 
+    # Keep manual and upload flows separate; mark this result as manual.
     session["manual_analysis"] = {
         "group_a_count": len(group_a_records),
         "group_b_count": len(group_b_records),
         "chi_square": logrank_output["chi_square"],
         "p_value": logrank_output["p_value"],
     }
+    session["result_mode"] = "manual"
+
+    # Clear stale upload metadata so manual flow cannot render upload output.
+    session.pop("latest_upload", None)
 
     return redirect(url_for("results"))
 
@@ -245,34 +246,41 @@ def manual_logrank():
 @app.route("/results")
 def results():
     """Show analysis output from upload mode or manual log-rank mode."""
+    # Explicitly route based on the last workflow action so the two forms
+    # cannot accidentally show each other's output.
+    result_mode = session.get("result_mode")
     manual_analysis = session.get("manual_analysis")
     file_metadata = session.get("latest_upload")
 
-    if manual_analysis:
+    if result_mode == "manual" and manual_analysis:
         return render_template(
             "results.html",
             mode="manual",
             manual_analysis=manual_analysis,
             file_metadata=None,
             image_url=None,
-            analysis_output=None,
+            metadata_output=None,
+            metadata_json=None,
         )
 
-    if not file_metadata:
-        flash("Upload an image first or run a manual log-rank test.", "error")
-        return redirect(url_for("home"))
+    if result_mode == "upload" and file_metadata:
+        upload_path = app.config["UPLOAD_FOLDER"] / file_metadata["filename"]
+        metadata_output = extract_figure_metadata(upload_path)
+        metadata_json = json.dumps(metadata_output, indent=2)
+        image_url = url_for("uploaded_file", filename=file_metadata["filename"])
 
-    analysis_output = build_placeholder_analysis(file_metadata)
-    image_url = url_for("uploaded_file", filename=file_metadata["filename"])
+        return render_template(
+            "results.html",
+            mode="upload",
+            file_metadata=file_metadata,
+            image_url=image_url,
+            metadata_output=metadata_output,
+            metadata_json=metadata_json,
+            manual_analysis=None,
+        )
 
-    return render_template(
-        "results.html",
-        mode="upload",
-        file_metadata=file_metadata,
-        image_url=image_url,
-        analysis_output=analysis_output,
-        manual_analysis=None,
-    )
+    flash("Upload an image first or run a manual log-rank test.", "error")
+    return redirect(url_for("home"))
 
 
 @app.route("/uploads/<path:filename>")
