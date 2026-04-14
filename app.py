@@ -293,6 +293,16 @@ def results():
                 "message": "Single-group or incomplete extraction detected. Log-rank analysis was skipped.",
                 "confidence": confidence,
             }
+        elif usable_curve_count > 2:
+            auto_logrank = {
+                "available": False,
+                "warning": f"{usable_curve_count} groups were detected.",
+                "message": (
+                    "Automatic log-rank is limited to two-group comparisons in this prototype. "
+                    "Please use manual mode or reduce to two groups."
+                ),
+                "confidence": confidence,
+            }
         else:
             initial_sizes, size_source, used_default_sizes = infer_initial_group_sizes(metadata_output, 2)
 
@@ -311,7 +321,7 @@ def results():
 
             if confidence < 0.65:
                 sanity_failures.append("extraction confidence is low")
-            if axis_status != "ok":
+            if axis_status not in {"ok", "ok_numeric"}:
                 sanity_failures.append("axis calibration failed")
             if used_default_sizes:
                 sanity_failures.append("group sizes depended on default assumptions")

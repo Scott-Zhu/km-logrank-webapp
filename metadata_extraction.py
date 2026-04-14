@@ -107,6 +107,25 @@ def _row_nonwhite_density(image: Image.Image, area: dict[str, int], y: int) -> f
     return nonwhite / total
 
 
+def _estimate_risk_table_rows(image: Image.Image, risk_table_area: dict[str, int] | None) -> int:
+    if not isinstance(risk_table_area, dict):
+        return 0
+    y0, y1 = risk_table_area["y0"], risk_table_area["y1"]
+    if y1 <= y0:
+        return 0
+    active_rows: list[int] = []
+    for y in range(y0, y1 + 1):
+        if _row_nonwhite_density(image, risk_table_area, y) > 0.06:
+            active_rows.append(y)
+    if not active_rows:
+        return 0
+    groups = 1
+    for prev, curr in zip(active_rows, active_rows[1:]):
+        if curr - prev > 4:
+            groups += 1
+    return groups
+
+
 def _split_plot_and_risk_table(image: Image.Image, content_area: dict[str, int]) -> tuple[dict[str, int], dict[str, int] | None]:
     """Split the content region into upper KM panel and lower risk-table panel."""
     y0, y1 = content_area["y0"], content_area["y1"]
@@ -257,6 +276,14 @@ def _component_mean_color(image: Image.Image, component: list[tuple[int, int]]) 
     return (total_r // size, total_g // size, total_b // size)
 
 
+def _component_thickness(component: list[tuple[int, int]]) -> float:
+    if not component:
+        return 0.0
+    bbox = _component_bbox(component)
+    width = max(1, bbox["x1"] - bbox["x0"] + 1)
+    return len(component) / width
+
+
 def _extract_component_curve_points(
     component: list[tuple[int, int]], plot_area: dict[str, int]
 ) -> list[dict[str, float]]:
@@ -382,6 +409,19 @@ def _deduplicate_curves(curves: list[dict[str, object]]) -> list[dict[str, objec
     return deduped
 
 
+def _extract_tick_values(lines: list[str]) -> list[float]:
+    values: list[float] = []
+    for line in lines:
+        if len(line) > 10:
+            continue
+        for token in re.findall(r"\d+(?:\.\d+)?", line):
+            try:
+                values.append(float(token))
+            except ValueError:
+                continue
+    return sorted(set(values))
+
+
 def _curve_name(index: int, color: tuple[int, int, int]) -> str:
     return f"curve_{index + 1}_rgb_{color[0]}_{color[1]}_{color[2]}"
 
@@ -436,6 +476,7 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
             curve_section["content_area"] = content_area
             curve_section["plot_area"] = plot_area
             curve_section["risk_table_area"] = risk_table_area
+            curve_section["risk_table_row_estimate"] = _estimate_risk_table_rows(image, risk_table_area)
 
             color_points = _candidate_points_by_color(image, plot_area)
             plot_width = max(1, plot_area["x1"] - plot_area["x0"])
@@ -458,6 +499,10 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
                     if height >= int(plot_height * 0.95):
                         continue
                     if touches_left and touches_bottom:
+                        continue
+                    thickness = _component_thickness(component)
+                    if thickness > 8.0:
+                        # likely confidence ribbon/fill, not a thin KM curve stroke
                         continue
                     filtered_components.append(component)
 
@@ -506,9 +551,9 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
                 ) / 6.0)
                 curve_section["confidence"] = round(confidence, 3)
                 curve_section["axis_calibration"] = {
-                    "status": "ok",
+                    "status": "normalized_only",
                     "time_scale": "normalized_0_1",
-                    "details": "Normalized axes calibrated from isolated upper panel bounding box.",
+                    "details": "Only normalized coordinate calibration available until numeric ticks are parsed.",
                 }
                 curve_section["messages"] = [
                     "Heuristic extraction succeeded for one or more visible curves.",
@@ -580,6 +625,11 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
                 )
                 risk_ocr_text = pytesseract.image_to_string(risk_crop)
     except Exception as exc:
+        risk_rows = int(base_output["curve_extraction"].get("risk_table_row_estimate", 0))
+        if risk_rows > 0:
+            base_output["number_at_risk_text"] = [
+                f"OCR unavailable; estimated approximately {risk_rows} risk-table row(s) visually."
+            ]
         base_output["messages"] = [
             "OCR text extraction was unavailable for this image.",
             f"Technical detail: {exc}",
@@ -604,6 +654,21 @@ def extract_figure_metadata(image_path: Path) -> dict[str, object]:
 
     axis_labels = [line for line in lines if _looks_like_axis_label(line)]
     legend_text = [line for line in lines if _looks_like_legend(line)]
+    tick_values = _extract_tick_values(lines)
+
+    if len(tick_values) >= 2:
+        base_output["curve_extraction"]["axis_calibration"] = {
+            "status": "ok_numeric",
+            "time_scale": {
+                "min_tick": tick_values[0],
+                "max_tick": tick_values[-1],
+            },
+            "details": "Numeric ticks parsed from OCR text.",
+        }
+    elif base_output["curve_extraction"]["axis_calibration"]["status"] == "normalized_only":
+        base_output["curve_extraction"]["axis_calibration"]["details"] = (
+            "Numeric tick parsing failed; only normalized calibration is available."
+        )
 
     number_at_risk_lines = [line for line in risk_lines if _looks_like_number_at_risk(line)]
     number_rows = _extract_numeric_rows(risk_lines or lines)

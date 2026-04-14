@@ -91,6 +91,9 @@
         {% endif %}
 
         <p><strong>Status:</strong> {{ metadata_output.curve_extraction.status }}</p>
+        {% if metadata_output.curve_extraction.risk_table_row_estimate %}
+        <p><strong>Estimated risk-table rows:</strong> {{ metadata_output.curve_extraction.risk_table_row_estimate }}</p>
+        {% endif %}
 
         <h3>Assumptions</h3>
         <ul>
