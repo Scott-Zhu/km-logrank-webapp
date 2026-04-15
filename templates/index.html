@@ -10,7 +10,7 @@
     <main class="container">
       <h1>KM Log-rank Web App</h1>
       <p>
-        A beginner-friendly Flask project for Kaplan-Meier and log-rank workflows.
+        Flask workflow for Kaplan-Meier figure extraction with an LLM vision API plus manual log-rank testing.
       </p>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -24,14 +24,13 @@
       {% endwith %}
 
       <section class="upload-card">
-        <!-- Manual workflow form: posts only to /manual-logrank -->
         <h2>Manual Survival Analysis (Log-rank)</h2>
         <p>
           Enter two groups of survival records. Use one row per participant with:
           <code>time,event</code> (or <code>time event</code>).
           Event should be <code>1</code> for event and <code>0</code> for censored.
         </p>
-        <p class="small-note"><strong>Manual mode:</strong> uses user-provided records directly.</p>
+        <p class="small-note"><strong>Manual mode:</strong> uses your records directly (no image extraction).</p>
 
         <form action="{{ url_for('manual_logrank') }}" method="post">
           <label for="group_a_data">Group A records</label>
@@ -54,18 +53,22 @@
 
           <button type="submit">Run manual log-rank test</button>
         </form>
-        <p>This prototype attempts approximate curve-point extraction and may fall back to metadata-only output.</p>
       </section>
 
       <section class="upload-card">
-        <!-- Upload workflow form: posts only to /upload with multipart encoding -->
-        <h2>Upload Kaplan-Meier Image (Metadata + Curve Digitization Prototype)</h2>
+        <h2>Upload Kaplan-Meier Image (LLM API Extraction)</h2>
         <form action="{{ url_for('upload_image') }}" method="post" enctype="multipart/form-data">
           <label for="image_file">Select image file (PNG, JPG, JPEG)</label>
           <input id="image_file" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" required />
-          <button type="submit">Upload</button>
+          <button type="submit">Upload and analyze</button>
         </form>
-        <p><strong>Automatic approximation mode:</strong> reconstructs approximate records from extracted curve points and may fall back to metadata-only output.</p>
+        <p>
+          <strong>Upload mode:</strong> uses the OpenAI Responses API to infer approximate structured data from the KM figure,
+          then computes an approximate two-group log-rank result from reconstructed records.
+        </p>
+        <p class="small-note">
+          API keys are read only from <code>OPENAI_API_KEY</code> environment variables. This page never asks you to paste keys.
+        </p>
       </section>
     </main>
   </body>

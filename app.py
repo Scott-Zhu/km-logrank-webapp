@@ -2,6 +2,7 @@ from math import erfc, sqrt
 from pathlib import Path
 import json
 
+from dotenv import load_dotenv
 from flask import (
     Flask,
     flash,
@@ -14,17 +15,26 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
-from metadata_extraction import extract_figure_metadata
-from survival_reconstruction import infer_initial_group_sizes, reconstruct_group_records
+from llm_extraction import (
+    KMVisionExtractor,
+    LLMExtractionError,
+    image_sha256,
+    reconstruct_missing_records,
+)
+
+# Load local .env values if present (safe for local development).
+load_dotenv()
 
 # Create the Flask application object.
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "dev-secret-key"
 app.config["UPLOAD_FOLDER"] = Path("uploads")
+app.config["CACHE_FOLDER"] = Path("cache")
 app.config["ALLOWED_EXTENSIONS"] = {"png", "jpg", "jpeg"}
 
-# Ensure upload destination exists.
+# Ensure runtime folders exist.
 app.config["UPLOAD_FOLDER"].mkdir(parents=True, exist_ok=True)
+app.config["CACHE_FOLDER"].mkdir(parents=True, exist_ok=True)
 
 
 def is_allowed_file(filename: str) -> bool:
@@ -36,19 +46,7 @@ def is_allowed_file(filename: str) -> bool:
 
 
 def parse_survival_records(raw_text: str, group_label: str) -> list[dict[str, float | int]]:
-    """Parse manual survival input.
-
-    Expected format:
-      - One record per line
-      - Two values per line: time and event indicator
-      - Allowed separators: comma or whitespace
-      - Event indicator must be 0 (censored) or 1 (event)
-
-    Example:
-      5,1
-      8,0
-      12 1
-    """
+    """Parse manual survival input."""
     lines = raw_text.splitlines()
     records: list[dict[str, float | int]] = []
 
@@ -163,6 +161,61 @@ def compute_logrank_test(
     }
 
 
+def _cache_path_for_hash(image_hash: str) -> Path:
+    return app.config["CACHE_FOLDER"] / f"{image_hash}.json"
+
+
+def _load_cached_extraction(image_hash: str) -> dict | None:
+    cache_path = _cache_path_for_hash(image_hash)
+    if not cache_path.exists():
+        return None
+    return json.loads(cache_path.read_text(encoding="utf-8"))
+
+
+def _save_cached_extraction(image_hash: str, payload: dict) -> None:
+    cache_path = _cache_path_for_hash(image_hash)
+    cache_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _build_auto_logrank(payload: dict) -> dict:
+    groups = payload.get("groups", [])
+    if not isinstance(groups, list) or len(groups) < 2:
+        return {
+            "available": False,
+            "message": "At least two groups are required for a two-group log-rank test.",
+        }
+
+    if len(groups) > 2:
+        return {
+            "available": False,
+            "message": "More than two groups were extracted; this app runs two-group log-rank only.",
+        }
+
+    group_a = groups[0]
+    group_b = groups[1]
+    records_a = group_a.get("estimated_records", [])
+    records_b = group_b.get("estimated_records", [])
+
+    if not records_a or not records_b:
+        return {
+            "available": False,
+            "message": "One or both groups have no reconstructed estimated records.",
+        }
+
+    output = compute_logrank_test(records_a, records_b)
+    return {
+        "available": True,
+        "group_a_name": group_a.get("name", "Group A"),
+        "group_b_name": group_b.get("name", "Group B"),
+        "group_a_count": len(records_a),
+        "group_b_count": len(records_b),
+        "group_a_records": records_a,
+        "group_b_records": records_b,
+        "chi_square": output["chi_square"],
+        "p_value": output["p_value"],
+    }
+
+
 @app.route("/")
 def home():
     """Render the homepage."""
@@ -198,11 +251,8 @@ def upload_image():
         "filename": filename,
         "content_type": file.content_type or "Unknown",
     }
-    # Keep upload and manual analysis workflows separate in session state.
     session["latest_upload"] = file_metadata
     session["result_mode"] = "upload"
-
-    # Clear stale manual output so the upload flow cannot render manual results.
     session.pop("manual_analysis", None)
 
     return redirect(url_for("results"))
@@ -229,7 +279,6 @@ def manual_logrank():
             400,
         )
 
-    # Keep manual and upload flows separate; mark this result as manual.
     session["manual_analysis"] = {
         "group_a_count": len(group_a_records),
         "group_b_count": len(group_b_records),
@@ -237,8 +286,6 @@ def manual_logrank():
         "p_value": logrank_output["p_value"],
     }
     session["result_mode"] = "manual"
-
-    # Clear stale upload metadata so manual flow cannot render upload output.
     session.pop("latest_upload", None)
 
     return redirect(url_for("results"))
@@ -247,8 +294,6 @@ def manual_logrank():
 @app.route("/results")
 def results():
     """Show analysis output from upload mode or manual log-rank mode."""
-    # Explicitly route based on the last workflow action so the two forms
-    # cannot accidentally show each other's output.
     result_mode = session.get("result_mode")
     manual_analysis = session.get("manual_analysis")
     file_metadata = session.get("latest_upload")
@@ -266,143 +311,51 @@ def results():
 
     if result_mode == "upload" and file_metadata:
         upload_path = app.config["UPLOAD_FOLDER"] / file_metadata["filename"]
-        metadata_output = extract_figure_metadata(upload_path)
-        metadata_json = json.dumps(metadata_output, indent=2)
-        image_url = url_for("uploaded_file", filename=file_metadata["filename"])
-        auto_logrank = None
+        image_hash = image_sha256(upload_path)
+        extractor = KMVisionExtractor()
 
-        curves = metadata_output.get("curve_extraction", {}).get("curves", [])
-        curve_extraction = metadata_output.get("curve_extraction", {})
-        confidence = float(curve_extraction.get("confidence", 0.0))
-        axis_status = str(curve_extraction.get("axis_calibration", {}).get("status", "failed"))
-        curves_list = curves if isinstance(curves, list) else []
-        valid_curve_count = int(curve_extraction.get("valid_curve_count", len(curves_list)))
-        usable_curve_count = min(valid_curve_count, len(curves_list))
+        extraction_source = ""
+        extraction_error = None
+        payload = _load_cached_extraction(image_hash)
 
-        if not curves_list or usable_curve_count == 0:
-            auto_logrank = {
-                "available": False,
-                "warning": "No valid curves were detected from this image.",
-                "message": "Automatic analysis is unavailable. Review extraction output or use manual mode.",
-                "confidence": confidence,
-            }
-        elif usable_curve_count < 2:
-            auto_logrank = {
-                "available": False,
-                "warning": "Fewer than two valid groups were detected.",
-                "message": "Single-group or incomplete extraction detected. Log-rank analysis was skipped.",
-                "confidence": confidence,
-            }
-        elif usable_curve_count > 2:
-            auto_logrank = {
-                "available": False,
-                "warning": f"{usable_curve_count} groups were detected.",
-                "message": (
-                    "Automatic log-rank is limited to two-group comparisons in this prototype. "
-                    "Please use manual mode or reduce to two groups."
-                ),
-                "confidence": confidence,
-            }
+        if payload is not None:
+            extraction_source = "cached LLM response"
+        elif extractor.is_configured():
+            try:
+                payload = extractor.extract_from_image(upload_path)
+                payload = reconstruct_missing_records(payload)
+                _save_cached_extraction(image_hash, payload)
+                extraction_source = "LLM API"
+            except LLMExtractionError as exc:
+                extraction_error = str(exc)
         else:
-            initial_sizes, size_source, used_default_sizes = infer_initial_group_sizes(metadata_output, 2)
+            extraction_error = (
+                "No OPENAI_API_KEY is configured and no cached extraction exists for this image hash."
+            )
 
-            curve_a = curves_list[0] if len(curves_list) > 0 and isinstance(curves_list[0], dict) else {}
-            curve_b = curves_list[1] if len(curves_list) > 1 and isinstance(curves_list[1], dict) else {}
-            curve_a_points = curve_a.get("points", []) if isinstance(curve_a, dict) else []
-            curve_b_points = curve_b.get("points", []) if isinstance(curve_b, dict) else []
-
-            sanity_failures: list[str] = []
-            if not isinstance(curve_a_points, list) or not curve_a_points:
-                sanity_failures.append("curve group A points were unavailable")
-            if not isinstance(curve_b_points, list) or not curve_b_points:
-                sanity_failures.append("curve group B points were unavailable")
-            if len(initial_sizes) < 2:
-                sanity_failures.append("reliable group sizes were unavailable")
-
-            if confidence < 0.65:
-                sanity_failures.append("extraction confidence is low")
-            if axis_status not in {"ok", "ok_numeric"}:
-                sanity_failures.append("axis calibration failed")
-            if used_default_sizes:
-                sanity_failures.append("group sizes depended on default assumptions")
-
-            if sanity_failures:
+        auto_logrank = None
+        metadata_json = None
+        if payload is not None:
+            metadata_json = json.dumps(payload, indent=2)
+            try:
+                auto_logrank = _build_auto_logrank(payload)
+            except ValueError as exc:
                 auto_logrank = {
                     "available": False,
-                    "warning": (
-                        "Approximate automatic mode detected curves but did not run formal "
-                        "hypothesis testing because quality checks failed."
-                    ),
-                    "message": "Log-rank skipped: " + ", ".join(sanity_failures) + ".",
-                    "confidence": confidence,
-                    "initial_size_source": size_source,
+                    "message": str(exc),
                 }
-            else:
-                group_a = reconstruct_group_records(
-                    str(curve_a.get("name", "curve_1")),
-                    curve_a_points,
-                    initial_sizes[0],
-                )
-                group_b = reconstruct_group_records(
-                    str(curve_b.get("name", "curve_2")),
-                    curve_b_points,
-                    initial_sizes[1],
-                )
 
-                if group_a.records and group_b.records:
-                    try:
-                        logrank_output = compute_logrank_test(group_a.records, group_b.records)
-                        auto_logrank = {
-                            "available": True,
-                            "warning": (
-                                "Approximate automatic mode: records are reconstructed from "
-                                "digitized figure curves, not patient-level source data."
-                            ),
-                            "group_a_name": group_a.name,
-                            "group_b_name": group_b.name,
-                            "group_a_count": len(group_a.records),
-                            "group_b_count": len(group_b.records),
-                            "group_a_events": group_a.event_count,
-                            "group_b_events": group_b.event_count,
-                            "group_a_censored": group_a.censor_count,
-                            "group_b_censored": group_b.censor_count,
-                            "initial_size_source": size_source,
-                            "group_a_initial_n": group_a.initial_n,
-                            "group_b_initial_n": group_b.initial_n,
-                            "confidence": confidence,
-                            "chi_square": logrank_output["chi_square"],
-                            "p_value": logrank_output["p_value"],
-                        }
-                    except ValueError as exc:
-                        auto_logrank = {
-                            "available": False,
-                            "warning": (
-                                "Approximate automatic mode failed to produce a stable log-rank "
-                                "result from this figure."
-                            ),
-                            "message": str(exc),
-                            "confidence": confidence,
-                        }
-                else:
-                    auto_logrank = {
-                        "available": False,
-                        "warning": (
-                            "Approximate automatic mode could not reconstruct enough records "
-                            "from extracted curves."
-                        ),
-                        "message": "Partial extraction detected. Try manual mode for validated inputs.",
-                        "confidence": confidence,
-                    }
-
+        image_url = url_for("uploaded_file", filename=file_metadata["filename"])
         return render_template(
             "results.html",
             mode="upload",
             file_metadata=file_metadata,
             image_url=image_url,
-            metadata_output=metadata_output,
+            metadata_output=payload,
             metadata_json=metadata_json,
-            metadata_data=metadata_output,
             auto_logrank=auto_logrank,
+            extraction_source=extraction_source,
+            extraction_error=extraction_error,
             manual_analysis=None,
         )
 
@@ -417,5 +370,4 @@ def uploaded_file(filename: str):
 
 
 if __name__ == "__main__":
-    # debug=True reloads automatically while you are developing.
     app.run(debug=True)
