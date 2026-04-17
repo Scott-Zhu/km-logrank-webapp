@@ -21,9 +21,7 @@
         <p><strong>p-value:</strong> {{ "%.6f"|format(manual_analysis.p_value) }}</p>
       </section>
       {% else %}
-      <p>
-        Upload workflow uses an <strong>LLM vision API</strong> and then deterministic Python post-processing.
-      </p>
+      <p>Upload workflow uses an <strong>LLM vision API</strong> and conservative deterministic reconstruction.</p>
 
       <section class="result-card">
         <h2>Uploaded Image</h2>
@@ -37,34 +35,52 @@
         {% if extraction_source %}
         <p><strong>Extraction source:</strong> {{ extraction_source }}</p>
         {% endif %}
-
         {% if extraction_source == "cached LLM response" %}
-        <div class="message message-warning">
-          Cached extraction was used for this image hash. No API call was made.
-        </div>
+        <div class="message message-warning">Cached extraction was used for this image hash. No API call was made.</div>
         {% endif %}
-
         {% if extraction_error %}
-        <div class="message message-error">
-          <strong>Extraction error:</strong> {{ extraction_error }}
-        </div>
+        <div class="message message-error"><strong>Extraction error:</strong> {{ extraction_error }}</div>
         {% endif %}
 
         <div class="message message-warning">
           <strong>Disclaimer:</strong>
-          This extraction is approximate because it is inferred from a plotted Kaplan-Meier curve image,
-          not recovered from source patient-level time-to-event data.
+          Extraction is approximate from a plotted KM curve image, not source patient-level data.
         </div>
       </section>
 
       {% if metadata_output %}
       <section class="result-card">
-        <h2>Approximate Log-rank from LLM-Extracted Data</h2>
+        <h2>Conservative KM Geometry Summary</h2>
+        <p><strong>Overall x-axis max:</strong> {{ metadata_output.overall_x_axis_max }}</p>
+        <ul>
+          {% for group in metadata_output.groups %}
+          <li>
+            <strong>{{ group.name }}</strong>: last visible curve time = {{ group.last_visible_curve_time }},
+            last visible survival = {{ group.last_visible_curve_survival }}
+          </li>
+          {% endfor %}
+        </ul>
+        <p><strong>Suspicious rules triggered:</strong> {{ metadata_output.reconstruction_summary.suspicious_rules_triggered|length }}</p>
+        <p><strong>Python repairs applied:</strong> {{ metadata_output.reconstruction_summary.python_repairs_applied|length }}</p>
+        <p><strong>LLM review pass used:</strong> {{ metadata_output.reconstruction_summary.llm_review_used }}</p>
+        <p><strong>Conservative truncation used:</strong> {{ metadata_output.reconstruction_summary.conservative_truncation_used }}</p>
+      </section>
+
+      <section class="result-card">
+        <h2>Approximate Log-rank from Conservative Reconstruction</h2>
         {% if auto_logrank and auto_logrank.available %}
           <p><strong>Group A:</strong> {{ auto_logrank.group_a_name }} ({{ auto_logrank.group_a_count }} records)</p>
           <p><strong>Group B:</strong> {{ auto_logrank.group_b_name }} ({{ auto_logrank.group_b_count }} records)</p>
+          <p><strong>Group A last visible curve time:</strong> {{ auto_logrank.group_a_last_visible_curve_time }}</p>
+          <p><strong>Group B last visible curve time:</strong> {{ auto_logrank.group_b_last_visible_curve_time }}</p>
           <p><strong>Log-rank chi-square:</strong> {{ "%.4f"|format(auto_logrank.chi_square) }}</p>
           <p><strong>p-value:</strong> {{ "%.6f"|format(auto_logrank.p_value) }}</p>
+
+          <h3>Interval-level Reconstruction Summary</h3>
+          <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
+          <pre class="json-output">{{ auto_logrank.group_a_interval_summary | tojson(indent=2) }}</pre>
+          <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
+          <pre class="json-output">{{ auto_logrank.group_b_interval_summary | tojson(indent=2) }}</pre>
 
           <h3>Reconstructed Group Records</h3>
           <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
