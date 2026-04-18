@@ -112,13 +112,62 @@ CURVE_SCHEMA: dict[str, Any] = {
                     "risk_table_counts": {"type": "array", "items": {"type": "integer", "minimum": 0}},
                     "step_points_visible": {"type": "array", "items": STEP_POINT_SCHEMA},
                     "visible_drop_times": {"type": "array", "items": {"type": "number", "minimum": 0}},
-                    "visible_horizontal_segments": {"type": "array", "items": {"type": "object"}},
+                    "visible_horizontal_segments": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "start_time",
+                                "end_time",
+                                "survival_probability",
+                                "support_type",
+                                "confidence",
+                            ],
+                            "properties": {
+                                "start_time": {"type": "number", "minimum": 0},
+                                "end_time": {"type": "number", "minimum": 0},
+                                "survival_probability": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1,
+                                },
+                                "support_type": {
+                                    "type": "string",
+                                    "enum": ["visible", "inferred_from_overlap"],
+                                },
+                                "confidence": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1,
+                                },
+                            },
+                        },
+                    },
                     "visible_censor_times": {"type": "array", "items": {"type": "number", "minimum": 0}},
                     "last_visible_curve_time": {"type": "number", "minimum": 0},
                     "last_visible_curve_survival": {"type": "number", "minimum": 0, "maximum": 1},
                     "curve_confidence": {"type": "number", "minimum": 0, "maximum": 1},
                     "extraction_warnings": {"type": "array", "items": {"type": "string"}},
-                    "interval_event_count_estimates": {"type": "array", "items": {"type": "object"}},
+                    "interval_event_count_estimates": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "interval_start",
+                                "interval_end",
+                                "estimated_events",
+                                "confidence",
+                            ],
+                            "properties": {
+                                "interval_start": {"type": "number", "minimum": 0},
+                                "interval_end": {"type": "number", "minimum": 0},
+                                "estimated_events": {"type": "integer", "minimum": 0},
+                                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                            },
+                        },
+                    },
                     "overlap_inferred_drop_times": {"type": "array", "items": {"type": "number", "minimum": 0}},
                 },
             },
@@ -309,6 +358,11 @@ class KMVisionExtractor:
         schema_name: str,
         schema: dict[str, Any],
     ) -> dict[str, Any]:
+        normalized_schema = normalize_strict_schema(schema)
+        if schema_name == "km_curve_stage":
+            print("Normalized km_curve_stage schema:")
+            print(json.dumps(normalized_schema, indent=2))
+
         response = client.responses.create(
             model=self.model,
             instructions=instructions,
@@ -319,7 +373,14 @@ class KMVisionExtractor:
                     + [{"type": "input_image", "image_url": img} for img in images],
                 }
             ],
-            text={"format": {"type": "json_schema", "name": schema_name, "schema": schema, "strict": True}},
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": schema_name,
+                    "schema": normalized_schema,
+                    "strict": True,
+                }
+            },
         )
         parsed = self._parse_json(self._response_text(response))
         if parsed is not None:
@@ -329,7 +390,14 @@ class KMVisionExtractor:
             model=self.model,
             instructions="Return valid strict JSON only.",
             input=f"Repair this JSON:\n\n{self._response_text(response)}",
-            text={"format": {"type": "json_schema", "name": schema_name, "schema": schema, "strict": True}},
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": schema_name,
+                    "schema": normalized_schema,
+                    "strict": True,
+                }
+            },
         )
         parsed_repair = self._parse_json(self._response_text(repair))
         if parsed_repair is None:
@@ -406,6 +474,47 @@ def unique_list(values: list[Any]) -> list[Any]:
         seen.add(key)
         out.append(item)
     return out
+
+
+def normalize_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Normalize schema recursively for OpenAI strict json_schema requirements."""
+
+    def _normalize(node: Any) -> Any:
+        if isinstance(node, list):
+            return [_normalize(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+
+        output: dict[str, Any] = {key: _normalize(value) for key, value in node.items()}
+
+        node_type = output.get("type")
+        type_values: list[str] = []
+        if isinstance(node_type, str):
+            type_values = [node_type]
+        elif isinstance(node_type, list):
+            type_values = [value for value in node_type if isinstance(value, str)]
+
+        if "object" in type_values:
+            properties = output.get("properties")
+            if not isinstance(properties, dict):
+                properties = {}
+                output["properties"] = properties
+            output["additionalProperties"] = False
+            output["required"] = list(properties.keys())
+            output["properties"] = {key: _normalize(value) for key, value in properties.items()}
+
+        if "array" in type_values and "items" in output:
+            output["items"] = _normalize(output["items"])
+
+        if "anyOf" in output and isinstance(output["anyOf"], list):
+            output["anyOf"] = [_normalize(branch) for branch in output["anyOf"]]
+
+        if "$defs" in output and isinstance(output["$defs"], dict):
+            output["$defs"] = {key: _normalize(value) for key, value in output["$defs"].items()}
+
+        return output
+
+    return _normalize(schema)
 
 
 def apply_overlap_stage(payload: dict[str, Any], overlap_stage: dict[str, Any]) -> dict[str, Any]:
