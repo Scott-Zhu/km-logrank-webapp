@@ -31,6 +31,12 @@
         <div class="message message-error"><strong>Extraction error:</strong> {{ extraction_error }}</div>
         {% endif %}
 
+        {% if auto_logrank and auto_logrank.warnings %}
+          {% for warning in auto_logrank.warnings %}
+          <span class="message message-warning" style="display:inline-block; margin-right:8px;">{{ warning }}</span>
+          {% endfor %}
+        {% endif %}
+
         {% if metadata_output and metadata_output.reconstruction_summary.warning_flags %}
           {% for flag in metadata_output.reconstruction_summary.warning_flags %}
           <span class="message message-warning" style="display:inline-block; margin-right:8px;">{{ flag }}</span>
@@ -111,45 +117,109 @@
       <section class="result-card">
         <h2>Final Log-rank Result</h2>
         {% if auto_logrank and auto_logrank.available %}
-        <table>
-          <thead>
-            <tr>
-              <th>Group A</th>
-              <th>Group B</th>
-              <th>Chi-square</th>
-              <th>p-value</th>
-              <th>Interpretation</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>{{ auto_logrank.group_a_name }}</td>
-              <td>{{ auto_logrank.group_b_name }}</td>
-              <td>{{ "%.4f"|format(auto_logrank.chi_square) }}</td>
-              <td>{{ "%.6f"|format(auto_logrank.p_value) }}</td>
-              <td>{{ auto_logrank.interpretation }}</td>
-            </tr>
-          </tbody>
-        </table>
+          {% if auto_logrank.analysis_type == "two_group" %}
+          <table>
+            <thead>
+              <tr>
+                <th>Group A</th>
+                <th>Group B</th>
+                <th>Chi-square</th>
+                <th>p-value</th>
+                <th>Interpretation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{{ auto_logrank.group_a_name }}</td>
+                <td>{{ auto_logrank.group_b_name }}</td>
+                <td>{{ "%.4f"|format(auto_logrank.chi_square) }}</td>
+                <td>{{ "%.6f"|format(auto_logrank.p_value) }}</td>
+                <td>{{ auto_logrank.interpretation }}</td>
+              </tr>
+            </tbody>
+          </table>
+          {% else %}
+          <h3>Overall Log-rank Result</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Number of groups</th>
+                <th>Group names</th>
+                <th>Chi-square</th>
+                <th>Degrees of freedom</th>
+                <th>p-value</th>
+                <th>Interpretation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{{ auto_logrank.group_count }}</td>
+                <td>{{ auto_logrank.group_names | join(", ") }}</td>
+                <td>{{ "%.4f"|format(auto_logrank.chi_square) }}</td>
+                <td>{{ auto_logrank.degrees_of_freedom }}</td>
+                <td>{{ "%.6f"|format(auto_logrank.p_value) }}</td>
+                <td>
+                  {{ auto_logrank.interpretation }}
+                  {% if auto_logrank.overall_plain_english %}
+                  {{ auto_logrank.overall_plain_english }}
+                  {% endif %}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {% if auto_logrank.pairwise_rows %}
+          <h3>Pairwise Comparisons</h3>
+          <p class="small-note">
+            Pairwise tests use {{ auto_logrank.correction_method|capitalize }}-adjusted p-values.
+            Unadjusted p-values are shown for transparency; adjusted p-values guide inference.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Group A</th>
+                <th>Group B</th>
+                <th>Chi-square</th>
+                <th>Unadjusted p-value</th>
+                <th>Adjusted p-value</th>
+                <th>Significant after adjustment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in auto_logrank.pairwise_rows %}
+              <tr>
+                <td>{{ row.group_a }}</td>
+                <td>{{ row.group_b }}</td>
+                <td>{{ "%.4f"|format(row.chi_square) }}</td>
+                <td>{{ "%.6f"|format(row.unadjusted_p) }}</td>
+                <td>{{ "%.6f"|format(row.adjusted_p) }}</td>
+                <td>{{ "Yes" if row.significant_after_adjustment else "No" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <p class="small-note">{{ auto_logrank.pairwise_interpretation }}</p>
+          {% endif %}
+          {% endif %}
         {% else %}
         <p>Log-rank result unavailable. {{ auto_logrank.message if auto_logrank else "" }}</p>
         {% endif %}
       </section>
 
-      {% if auto_logrank and auto_logrank.available %}
+      {% if auto_logrank and auto_logrank.available and auto_logrank.record_previews %}
       <section class="result-card">
         <h2>Record Preview (first 10 rows each group)</h2>
-        <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
-        <pre class="json-output">{{ auto_logrank.group_a_records_preview | tojson(indent=2) }}</pre>
-        <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
-        <pre class="json-output">{{ auto_logrank.group_b_records_preview | tojson(indent=2) }}</pre>
+        {% for preview in auto_logrank.record_previews %}
+        <p><strong>{{ preview.group_name }}</strong> ({{ preview.record_count }} rows)</p>
+        <pre class="json-output">{{ preview.records_preview | tojson(indent=2) }}</pre>
+        {% endfor %}
 
         <details>
           <summary>Show reconstructed records</summary>
-          <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
-          <pre class="json-output">{{ auto_logrank.group_a_records | tojson(indent=2) }}</pre>
-          <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
-          <pre class="json-output">{{ auto_logrank.group_b_records | tojson(indent=2) }}</pre>
+          {% for preview in auto_logrank.record_previews %}
+          <p><strong>{{ preview.group_name }}</strong></p>
+          <pre class="json-output">{{ preview.records | tojson(indent=2) }}</pre>
+          {% endfor %}
         </details>
       </section>
       {% endif %}
