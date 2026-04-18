@@ -161,6 +161,9 @@
 
       <section class="result-card">
         <h2>Final Log-rank Result</h2>
+        {% if auto_logrank and auto_logrank.canonical_reconstruction_note %}
+        <p class="small-note">{{ auto_logrank.canonical_reconstruction_note }}</p>
+        {% endif %}
         {% if auto_logrank and auto_logrank.available %}
           {% if auto_logrank.analysis_type == "two_group" %}
           <table>
@@ -254,6 +257,12 @@
 
         {% if auto_logrank and auto_logrank.reliability_notes %}
         <h3>Reliability Notes</h3>
+        {% if auto_logrank.canonical_checks %}
+        <p class="small-note">
+          Accounting checks: {{ "pass" if auto_logrank.canonical_checks.accounting_identities_passed else "fail" }} |
+          Interval conservation: {{ "pass" if auto_logrank.canonical_checks.interval_conservation_passed else "fail" }}
+        </p>
+        {% endif %}
         <ul>
           {% for note in auto_logrank.reliability_notes %}
           <li>{{ note }}</li>
@@ -283,7 +292,12 @@
       {% if metadata_output %}
       <section class="result-card">
         <h2>Warnings & Confidence</h2>
+        {% if auto_logrank and auto_logrank.display_confidence is defined %}
+        <p><strong>Confidence:</strong> {{ "%.3f"|format(auto_logrank.display_confidence) }}</p>
+        <p class="small-note">{{ auto_logrank.confidence_note }}</p>
+        {% else %}
         <p><strong>Confidence:</strong> {{ "%.3f"|format(metadata_output.confidence) }}</p>
+        {% endif %}
         {% if metadata_output.warnings %}
         <ul>
           {% for item in metadata_output.warnings %}

@@ -16,7 +16,12 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
-from llm_extraction import KMVisionExtractor, LLMExtractionError, image_sha256
+from llm_extraction import (
+    KMVisionExtractor,
+    LLMExtractionError,
+    cap_confidence_for_quality,
+    image_sha256,
+)
 
 # Load local .env values if present (safe for local development).
 load_dotenv()
@@ -317,9 +322,10 @@ def _save_cached_extraction(image_hash: str, payload: dict) -> None:
 
 
 def _build_auto_logrank(payload: dict) -> dict:
-    groups = payload.get("groups", [])
-    if not isinstance(groups, list):
-        return {"available": False, "message": "Invalid extraction payload: groups must be a list."}
+    canonical = payload.get("canonical_reconstruction", {})
+    canonical_groups = canonical.get("groups", [])
+    if not isinstance(canonical_groups, list):
+        return {"available": False, "message": "Invalid extraction payload: canonical reconstruction is missing."}
 
     group_summaries = []
     interval_rows = []
@@ -329,9 +335,9 @@ def _build_auto_logrank(payload: dict) -> dict:
     pairwise_policy = quality_summary.get("pairwise_recommendation", "show")
     reliability_notes: list[str] = []
 
-    for group in groups:
-        group_name = group.get("name", "")
-        records = group.get("estimated_records", [])
+    for group in canonical_groups:
+        group_name = group.get("group_name", "")
+        records = group.get("records", [])
         terminal_known = bool(group.get("terminal_risk_known", False))
         unresolved_tail_count = int(group.get("unresolved_tail_count", 0) or 0)
         if not terminal_known:
@@ -349,18 +355,16 @@ def _build_auto_logrank(payload: dict) -> dict:
                 "initial_n": group.get("initial_n"),
                 "last_visible_curve_time": group.get("last_visible_curve_time"),
                 "last_visible_survival": group.get("last_visible_curve_survival"),
-                "number_of_visible_drops": len(
-                    [p for p in group.get("step_points_visible", []) if p.get("support_type") == "visible"]
-                ),
-                "number_of_inferred_overlap_drops": len(group.get("overlap_inferred_drop_times", [])),
-                "number_of_reconstructed_events": sum(1 for r in records if int(r.get("event", 0)) == 1),
-                "number_of_reconstructed_censors": sum(1 for r in records if int(r.get("event", 0)) == 0),
+                "number_of_visible_drops": group.get("visible_drop_count", ""),
+                "number_of_inferred_overlap_drops": group.get("overlap_inferred_drop_count", ""),
+                "number_of_reconstructed_events": int(group.get("event_total", 0)),
+                "number_of_reconstructed_censors": int(group.get("censor_total", 0)),
                 "terminal_risk_known": terminal_known,
                 "unresolved_tail_count": unresolved_tail_count,
             }
         )
 
-        interval_rows.extend(group.get("interval_summary", []))
+        interval_rows.extend(group.get("interval_rows", []))
         record_previews.append(
             {
                 "group_name": group_name or "Unnamed group",
@@ -370,6 +374,14 @@ def _build_auto_logrank(payload: dict) -> dict:
             }
         )
         groups_records.append({"group_name": group_name or "Unnamed group", "records": records})
+
+    accounting_passed = bool(canonical.get("accounting_identities_passed", False))
+    interval_passed = bool(canonical.get("interval_conservation_passed", False))
+    severe_ordering_issue = any("group-order contradiction" in reason for reason in quality_summary.get("figure_quality_reasons", []))
+    figure_quality = str(quality_summary.get("figure_quality_grade", "high")).lower()
+    pairwise_policy = "show"
+    if not (accounting_passed and interval_passed) or severe_ordering_issue or figure_quality == "low":
+        pairwise_policy = "suppress"
 
     analysis = run_logrank_analysis(
         groups_records=groups_records,
@@ -381,6 +393,18 @@ def _build_auto_logrank(payload: dict) -> dict:
     analysis["record_previews"] = record_previews
     analysis["quality_summary"] = quality_summary
     analysis["reliability_notes"] = unique_ordered_strings(reliability_notes)
+    analysis["canonical_reconstruction_note"] = "All tables and tests below are derived from one repaired canonical reconstruction."
+    analysis["canonical_checks"] = {
+        "accounting_identities_passed": accounting_passed,
+        "interval_conservation_passed": interval_passed,
+    }
+
+    capped_confidence, confidence_note = cap_confidence_for_quality(
+        float(payload.get("confidence", 0.0)),
+        figure_quality,
+    )
+    analysis["display_confidence"] = capped_confidence
+    analysis["confidence_note"] = confidence_note
 
     if analysis.get("analysis_type") == "multigroup" and analysis.get("pairwise_rows"):
         if any(row.get("significant_after_adjustment") for row in analysis["pairwise_rows"]):
@@ -396,10 +420,20 @@ def _build_auto_logrank(payload: dict) -> dict:
                 "Pairwise rows are shown as low-confidence exploratory output due to extraction quality limitations."
             )
     elif analysis.get("analysis_type") == "multigroup" and pairwise_policy == "suppress":
-        analysis["pairwise_interpretation"] = analysis.get(
-            "pairwise_message",
-            "Pairwise comparisons were suppressed because extraction quality is very low."
-        )
+        suppression_reason = []
+        if not accounting_passed:
+            suppression_reason.append("canonical accounting checks did not pass")
+        if not interval_passed:
+            suppression_reason.append("interval conservation checks did not pass")
+        if severe_ordering_issue:
+            suppression_reason.append("group-order contradiction remains unresolved")
+        if figure_quality == "low":
+            suppression_reason.append("overall figure quality is LOW")
+        message = "Pairwise comparisons were suppressed"
+        if suppression_reason:
+            message += ": " + "; ".join(suppression_reason) + "."
+        analysis["pairwise_interpretation"] = message
+        analysis["pairwise_message"] = message
 
     if analysis.get("analysis_type") == "multigroup" and analysis.get("p_value", 1.0) < analysis.get("alpha", 0.05):
         analysis["overall_plain_english"] = "At least one survival curve differs from the others."

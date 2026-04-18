@@ -311,6 +311,8 @@ class KMVisionExtractor:
         payload, truncation_used, reconstruction_flags = reconstruct_records_conservative(payload)
         payload, conservation_flags = apply_interval_conservation_validation(payload)
         reconstruction_flags.extend(conservation_flags)
+        payload, canonical_flags = build_canonical_reconstruction(payload)
+        reconstruction_flags.extend(canonical_flags)
         payload, quality_summary = grade_extraction_quality(payload, suspicious_rules, repair_notes)
 
         payload["reconstruction_summary"] = {
@@ -1100,6 +1102,213 @@ def append_note(existing: str, note: str) -> str:
     return f"{existing}; {note}"
 
 
+def build_canonical_reconstruction(payload: dict[str, Any], allowed_rounding_tolerance: int = 0) -> tuple[dict[str, Any], list[str]]:
+    """
+    Canonical interval convention:
+    - Each interval is interpreted as [t_i, t_{i+1}) except the final interval which is [t_i, t_{i+1}].
+    - Risk-table deltas are applied on these same intervals with no hidden +1 drift.
+    """
+    flags: list[str] = []
+    canonical_groups: list[dict[str, Any]] = []
+
+    for group in payload.get("groups", []):
+        rows = [dict(row) for row in group.get("interval_summary", [])]
+        rows = sorted(rows, key=lambda row: float(row.get("interval_start", 0.0)))
+        risk_counts = [int(v) if isinstance(v, int) else None for v in group.get("risk_table_counts", [])]
+        initial_n = int(group.get("initial_n") or next((v for v in risk_counts if isinstance(v, int)), 0))
+        terminal_known = bool(group.get("terminal_risk_known", False))
+
+        repaired_rows, row_flags = repair_interval_rows_to_deltas(rows, allowed_rounding_tolerance)
+        flags.extend([f"{group.get('name', 'group')}: {item}" for item in row_flags])
+
+        records = records_from_canonical_intervals(repaired_rows)
+        event_total = sum(int(row.get("estimated_events", 0)) for row in repaired_rows)
+        censor_total = sum(int(row.get("estimated_censors", 0)) for row in repaired_rows)
+
+        last_known_risk = last_known_risk_value(risk_counts)
+        final_known_risk = risk_counts[-1] if risk_counts and isinstance(risk_counts[-1], int) else None
+        unresolved_tail = max(0, initial_n - event_total - censor_total - (final_known_risk if terminal_known and isinstance(final_known_risk, int) else (last_known_risk or 0)))
+        if terminal_known and isinstance(final_known_risk, int):
+            unresolved_tail = 0
+
+        canonical_groups.append(
+            {
+                "group_name": group.get("name", ""),
+                "interval_rows": repaired_rows,
+                "records": records,
+                "event_total": event_total,
+                "censor_total": censor_total,
+                "unresolved_tail_count": unresolved_tail,
+                "terminal_risk_known": terminal_known,
+                "initial_n": initial_n,
+                "last_known_risk": last_known_risk,
+                "final_known_risk": final_known_risk,
+                "last_visible_curve_time": group.get("last_visible_curve_time"),
+                "last_visible_curve_survival": group.get("last_visible_curve_survival"),
+                "visible_drop_count": len(group.get("visible_drop_times", [])),
+                "overlap_inferred_drop_count": len(group.get("overlap_inferred_drop_times", [])),
+            }
+        )
+
+    interval_ok, interval_issues = validate_canonical_interval_rows(canonical_groups, allowed_rounding_tolerance)
+    identities_ok, identity_issues = validate_canonical_identities(canonical_groups)
+    if not identities_ok:
+        flags.extend([f"identity-repair: {issue}" for issue in identity_issues])
+        canonical_groups = repair_canonical_identities(canonical_groups)
+        identities_ok, identity_issues = validate_canonical_identities(canonical_groups)
+
+    # Synchronize payload with canonical object so every downstream consumer sees one truth.
+    by_name = {str(g.get("name", "")): g for g in payload.get("groups", [])}
+    for canonical_group in canonical_groups:
+        name = str(canonical_group.get("group_name", ""))
+        if name not in by_name:
+            continue
+        by_name[name]["interval_summary"] = canonical_group["interval_rows"]
+        by_name[name]["estimated_records"] = canonical_group["records"]
+        by_name[name]["unresolved_tail_count"] = canonical_group["unresolved_tail_count"]
+
+    payload["canonical_reconstruction"] = {
+        "groups": canonical_groups,
+        "accounting_identities_passed": identities_ok,
+        "interval_conservation_passed": interval_ok,
+        "issues": unique_list(interval_issues + identity_issues),
+        "interval_convention": "[t_i, t_{i+1}) for all but final interval, which is closed at right bound.",
+    }
+    return payload, unique_list(flags)
+
+
+def repair_interval_rows_to_deltas(rows: list[dict[str, Any]], tolerance: int) -> tuple[list[dict[str, Any]], list[str]]:
+    flags: list[str] = []
+    repaired: list[dict[str, Any]] = []
+    for row in rows:
+        new_row = dict(row)
+        at_risk_start = new_row.get("at_risk_start")
+        next_known = new_row.get("next_known_at_risk")
+        events = int(new_row.get("estimated_events", 0))
+        censors = int(new_row.get("estimated_censors", 0))
+        removals = events + censors
+
+        if isinstance(at_risk_start, int) and removals > at_risk_start:
+            overflow = removals - at_risk_start
+            censors = max(0, censors - overflow)
+            removals = events + censors
+            flags.append(f"{new_row.get('interval', '?')}: capped removals to at_risk_start")
+
+        if isinstance(at_risk_start, int) and isinstance(next_known, int):
+            target = max(0, at_risk_start - next_known)
+            if abs(removals - target) > tolerance:
+                censors = max(0, censors + (target - removals))
+                if censors < 0:
+                    censors = 0
+                removals = events + censors
+                if removals != target:
+                    # if still off, trim events conservatively
+                    events = max(0, min(events, target))
+                    censors = max(0, target - events)
+                flags.append(f"{new_row.get('interval', '?')}: aligned removals to risk-table delta")
+
+        new_row["estimated_events"] = max(0, events)
+        new_row["estimated_censors"] = max(0, censors)
+        repaired.append(new_row)
+    return repaired, unique_list(flags)
+
+
+def records_from_canonical_intervals(interval_rows: list[dict[str, Any]]) -> list[dict[str, float | int]]:
+    records: list[dict[str, float | int]] = []
+    for idx, row in enumerate(interval_rows):
+        start = float(row.get("interval_start", 0.0))
+        end = float(row.get("interval_end", start))
+        is_last = idx == len(interval_rows) - 1
+        event_time = min(end, end - 0.001) if not is_last else end
+        censor_time = min(end, end - 0.0005) if not is_last else end
+        for _ in range(int(row.get("estimated_events", 0))):
+            records.append({"time": max(start, event_time), "event": 1})
+        for _ in range(int(row.get("estimated_censors", 0))):
+            records.append({"time": max(start, censor_time), "event": 0})
+    return sorted(records, key=lambda record: (float(record["time"]), int(record["event"])))
+
+
+def validate_canonical_identities(canonical_groups: list[dict[str, Any]]) -> tuple[bool, list[str]]:
+    issues: list[str] = []
+    for group in canonical_groups:
+        name = str(group.get("group_name", "group"))
+        event_total = int(group.get("event_total", 0))
+        censor_total = int(group.get("censor_total", 0))
+        unresolved = int(group.get("unresolved_tail_count", 0))
+        initial_n = int(group.get("initial_n", 0))
+        final_known = group.get("final_known_risk")
+        last_known = group.get("last_known_risk")
+
+        if unresolved < 0:
+            issues.append(f"{name}: unresolved_tail_count negative")
+        if bool(group.get("terminal_risk_known", False)) and isinstance(final_known, int):
+            if initial_n - final_known != event_total + censor_total:
+                issues.append(f"{name}: known-terminal accounting mismatch")
+        elif isinstance(last_known, int):
+            if initial_n - last_known != event_total + censor_total + unresolved:
+                issues.append(f"{name}: unknown-terminal accounting mismatch")
+    return len(issues) == 0, issues
+
+
+def validate_canonical_interval_rows(
+    canonical_groups: list[dict[str, Any]],
+    tolerance: int,
+) -> tuple[bool, list[str]]:
+    issues: list[str] = []
+    for group in canonical_groups:
+        name = str(group.get("group_name", "group"))
+        for row in group.get("interval_rows", []):
+            events = int(row.get("estimated_events", 0))
+            censors = int(row.get("estimated_censors", 0))
+            removals = events + censors
+            at_risk_start = row.get("at_risk_start")
+            next_known = row.get("next_known_at_risk")
+            if isinstance(at_risk_start, int) and removals > at_risk_start:
+                issues.append(f"{name} {row.get('interval', '?')}: removals exceed at-risk")
+            if isinstance(at_risk_start, int) and isinstance(next_known, int):
+                target = max(0, at_risk_start - next_known)
+                if abs(removals - target) > tolerance:
+                    issues.append(f"{name} {row.get('interval', '?')}: removals mismatch risk-table delta")
+    return len(issues) == 0, issues
+
+
+def repair_canonical_identities(canonical_groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    repaired_groups: list[dict[str, Any]] = []
+    for group in canonical_groups:
+        repaired = dict(group)
+        initial_n = int(repaired.get("initial_n", 0))
+        events = int(repaired.get("event_total", 0))
+        censors = int(repaired.get("censor_total", 0))
+        if bool(repaired.get("terminal_risk_known", False)) and isinstance(repaired.get("final_known_risk"), int):
+            final_known = int(repaired["final_known_risk"])
+            target = max(0, initial_n - final_known)
+            scale = target - (events + censors)
+            repaired["censor_total"] = max(0, censors + scale)
+            repaired["unresolved_tail_count"] = 0
+        elif isinstance(repaired.get("last_known_risk"), int):
+            last_known = int(repaired["last_known_risk"])
+            target = max(0, initial_n - last_known)
+            overflow = max(0, (events + censors) - target)
+            if overflow > 0:
+                trim_from_censors = min(censors, overflow)
+                censors -= trim_from_censors
+                overflow -= trim_from_censors
+                if overflow > 0:
+                    events = max(0, events - overflow)
+                repaired["event_total"] = events
+                repaired["censor_total"] = censors
+            repaired["unresolved_tail_count"] = max(0, target - (events + censors))
+        repaired_groups.append(repaired)
+    return repaired_groups
+
+
+def last_known_risk_value(risk_counts: list[int | None]) -> int | None:
+    for value in reversed(risk_counts):
+        if isinstance(value, int):
+            return value
+    return None
+
+
 def grade_extraction_quality(payload: dict[str, Any], suspicious_rules: list[str], repair_notes: list[str]) -> tuple[dict[str, Any], dict[str, Any]]:
     group_quality: list[dict[str, Any]] = []
     low_count = 0
@@ -1172,6 +1381,22 @@ def grade_extraction_quality(payload: dict[str, Any], suspicious_rules: list[str
     }
     payload["quality_summary"] = quality_summary
     return payload, quality_summary
+
+
+def cap_confidence_for_quality(raw_confidence: float, quality_grade: str) -> tuple[float, str]:
+    bounded = max(0.0, min(1.0, raw_confidence))
+    normalized = quality_grade.lower().strip()
+    if normalized == "medium":
+        capped = min(bounded, 0.75)
+        if capped < bounded:
+            return capped, "Displayed confidence capped for MEDIUM quality (model-assisted confidence, rule-based quality)."
+        return capped, "Confidence reflects model output under MEDIUM quality constraints."
+    if normalized == "low":
+        capped = min(bounded, 0.55)
+        if capped < bounded:
+            return capped, "Displayed confidence capped for LOW quality (model-assisted confidence, rule-based quality)."
+        return capped, "Confidence reflects model output under LOW quality constraints."
+    return bounded, "Confidence reflects model output; quality grade is rule-based."
 
 
 def interval_index_for_time(time_value: float, boundaries: list[float]) -> int | None:
