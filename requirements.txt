@@ -3,3 +3,4 @@ Pillow==11.2.1
 pytesseract==0.3.13
 openai==1.78.1
 python-dotenv==1.0.1
+lifelines==0.30.0

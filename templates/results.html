@@ -21,21 +21,96 @@
       {% else %}
       <section class="result-card">
         <h2>Upload Analysis Summary</h2>
-        <p><strong>Extraction source:</strong> {{ extraction_source or "unavailable" }}</p>
         <p><strong>Filename:</strong> {{ file_metadata.filename }}</p>
         <p><strong>Overall x-axis max:</strong> {{ metadata_output.overall_x_axis_max if metadata_output else "N/A" }}</p>
-        <p class="small-note">Visible drops are directly seen on the plot. Overlap-inferred drops are conservatively inferred when one curve is partially hidden by another.</p>
-        <p class="small-note">Risk-table decreases represent removals from the risk set, which may include both events and censoring.</p>
+        <p><strong>Extraction source:</strong> {{ extraction_source or "unavailable" }}</p>
 
         {% if extraction_error %}
         <div class="message message-error"><strong>Extraction error:</strong> {{ extraction_error }}</div>
         {% endif %}
+      </section>
 
-        {% if metadata_output and metadata_output.reconstruction_summary.warning_flags %}
-          {% for flag in metadata_output.reconstruction_summary.warning_flags %}
-          <span class="message message-warning" style="display:inline-block; margin-right:8px;">{{ flag }}</span>
-          {% endfor %}
+      <section class="result-card">
+        <h2>Uploaded Kaplan-Meier Figure</h2>
+        {% if image_url %}
+        <img src="{{ image_url }}" alt="Uploaded Kaplan-Meier figure preview" class="uploaded-image" />
+        {% else %}
+        <p>Image preview unavailable.</p>
         {% endif %}
+      </section>
+
+      <section class="result-card">
+        <h2>Compact Analysis Snapshot</h2>
+        <p><strong>Extraction source:</strong> {{ extraction_source or "unavailable" }}</p>
+        <p><strong>Number of groups:</strong> {{ auto_logrank.group_count if auto_logrank else "N/A" }}</p>
+        <p><strong>Figure quality:</strong> {{ auto_logrank.quality_summary.figure_quality_grade|upper if auto_logrank and auto_logrank.quality_summary else "N/A" }}</p>
+        <p><strong>Overall log-rank computed:</strong> {{ "Yes" if auto_logrank and auto_logrank.available else "No" }}</p>
+        {% if auto_logrank and auto_logrank.pairwise_message %}
+        <p><strong>Pairwise status:</strong> {{ auto_logrank.pairwise_message }}</p>
+        {% elif auto_logrank and auto_logrank.pairwise_interpretation and auto_logrank.analysis_type == "multigroup" %}
+        <p><strong>Pairwise status:</strong> {{ auto_logrank.pairwise_interpretation }}</p>
+        {% endif %}
+      </section>
+
+      <section class="result-card">
+        <h2>Extraction Quality</h2>
+        {% if auto_logrank and auto_logrank.quality_summary %}
+        <p><strong>Figure quality:</strong> {{ auto_logrank.quality_summary.figure_quality_grade|upper }}</p>
+        {% if auto_logrank.quality_summary.figure_quality_reasons %}
+        <ul>
+          {% for reason in auto_logrank.quality_summary.figure_quality_reasons %}
+          <li>{{ reason }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if auto_logrank.quality_summary.groups %}
+        <table>
+          <thead>
+            <tr>
+              <th>Group</th>
+              <th>Quality</th>
+              <th>Terminal risk known</th>
+              <th>Unresolved tail</th>
+              <th>Reasons</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for gq in auto_logrank.quality_summary.groups %}
+            <tr>
+              <td>{{ gq.group_name }}</td>
+              <td>{{ gq.quality_grade|upper }}</td>
+              <td>{{ "Yes" if gq.terminal_risk_known else "No" }}</td>
+              <td>{{ gq.unresolved_tail_count }}</td>
+              <td>{{ gq.reasons|join("; ") if gq.reasons else "—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+        {% else %}
+        <p>Quality summary unavailable.</p>
+        {% endif %}
+
+        <details>
+          <summary>Show technical notes</summary>
+          <p class="small-note">Visible drops are directly seen on the plot. Overlap-inferred drops are conservatively inferred when one curve is partially hidden by another.</p>
+          <p class="small-note">Risk-table decreases represent removals from the risk set, which may include both events and censoring.</p>
+          {% if auto_logrank and auto_logrank.warnings %}
+          <ul>
+            {% for warning in auto_logrank.warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          {% if metadata_output and metadata_output.reconstruction_summary.warning_flags %}
+          <ul>
+            {% for flag in metadata_output.reconstruction_summary.warning_flags %}
+            <li>{{ flag }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </details>
       </section>
 
       <section class="result-card">
@@ -52,6 +127,8 @@
               <th>Overlap-inferred drops</th>
               <th>Reconstructed events</th>
               <th>Reconstructed censors</th>
+              <th>Terminal risk known</th>
+              <th>Unresolved tail count</th>
             </tr>
           </thead>
           <tbody>
@@ -65,6 +142,8 @@
               <td>{{ row.number_of_inferred_overlap_drops }}</td>
               <td>{{ row.number_of_reconstructed_events }}</td>
               <td>{{ row.number_of_reconstructed_censors }}</td>
+              <td>{{ "Yes" if row.terminal_risk_known else "No" }}</td>
+              <td>{{ row.unresolved_tail_count }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -110,46 +189,130 @@
 
       <section class="result-card">
         <h2>Final Log-rank Result</h2>
+        {% if auto_logrank and auto_logrank.canonical_reconstruction_note %}
+        <p class="small-note">{{ auto_logrank.canonical_reconstruction_note }}</p>
+        {% endif %}
         {% if auto_logrank and auto_logrank.available %}
-        <table>
-          <thead>
-            <tr>
-              <th>Group A</th>
-              <th>Group B</th>
-              <th>Chi-square</th>
-              <th>p-value</th>
-              <th>Interpretation</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>{{ auto_logrank.group_a_name }}</td>
-              <td>{{ auto_logrank.group_b_name }}</td>
-              <td>{{ "%.4f"|format(auto_logrank.chi_square) }}</td>
-              <td>{{ "%.6f"|format(auto_logrank.p_value) }}</td>
-              <td>{{ auto_logrank.interpretation }}</td>
-            </tr>
-          </tbody>
-        </table>
+          {% if auto_logrank.analysis_type == "two_group" %}
+          <table>
+            <thead>
+              <tr>
+                <th>Group A</th>
+                <th>Group B</th>
+                <th>Chi-square</th>
+                <th>p-value</th>
+                <th>Interpretation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{{ auto_logrank.group_a_name }}</td>
+                <td>{{ auto_logrank.group_b_name }}</td>
+                <td>{{ "%.4f"|format(auto_logrank.chi_square) }}</td>
+                <td>{{ "%.6f"|format(auto_logrank.p_value) }}</td>
+                <td>{{ auto_logrank.interpretation }}</td>
+              </tr>
+            </tbody>
+          </table>
+          {% else %}
+          <h3>Overall Log-rank Result</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Number of groups</th>
+                <th>Group names</th>
+                <th>Chi-square</th>
+                <th>Degrees of freedom</th>
+                <th>p-value</th>
+                <th>Interpretation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{{ auto_logrank.group_count }}</td>
+                <td>{{ auto_logrank.group_names | join(", ") }}</td>
+                <td>{{ "%.4f"|format(auto_logrank.chi_square) }}</td>
+                <td>{{ auto_logrank.degrees_of_freedom }}</td>
+                <td>{{ "%.6f"|format(auto_logrank.p_value) }}</td>
+                <td>
+                  {{ auto_logrank.interpretation }}
+                  {% if auto_logrank.overall_plain_english %}
+                  {{ auto_logrank.overall_plain_english }}
+                  {% endif %}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {% if auto_logrank.pairwise_rows %}
+          <h3>Pairwise Comparisons</h3>
+          <p class="small-note">
+            Pairwise tests use {{ auto_logrank.correction_method|capitalize }}-adjusted p-values.
+            Unadjusted p-values are shown for transparency; adjusted p-values guide inference.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Group A</th>
+                <th>Group B</th>
+                <th>Chi-square</th>
+                <th>Unadjusted p-value</th>
+                <th>Adjusted p-value</th>
+                <th>Significant after adjustment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in auto_logrank.pairwise_rows %}
+              <tr>
+                <td>{{ row.group_a }}</td>
+                <td>{{ row.group_b }}</td>
+                <td>{{ "%.4f"|format(row.chi_square) }}</td>
+                <td>{{ "%.6f"|format(row.unadjusted_p) }}</td>
+                <td>{{ "%.6f"|format(row.adjusted_p) }}</td>
+                <td>{{ "Yes" if row.significant_after_adjustment else "No" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <p class="small-note">{{ auto_logrank.pairwise_interpretation }}</p>
+          {% elif auto_logrank.pairwise_message %}
+          <p class="small-note">{{ auto_logrank.pairwise_message }}</p>
+          {% endif %}
+          {% endif %}
         {% else %}
         <p>Log-rank result unavailable. {{ auto_logrank.message if auto_logrank else "" }}</p>
         {% endif %}
+
+        {% if auto_logrank and auto_logrank.reliability_notes %}
+        <h3>Reliability Notes</h3>
+        {% if auto_logrank.canonical_checks %}
+        <p class="small-note">
+          Accounting checks: {{ "pass" if auto_logrank.canonical_checks.accounting_identities_passed else "fail" }} |
+          Interval conservation: {{ "pass" if auto_logrank.canonical_checks.interval_conservation_passed else "fail" }}
+        </p>
+        {% endif %}
+        <ul>
+          {% for note in auto_logrank.reliability_notes %}
+          <li>{{ note }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
       </section>
 
-      {% if auto_logrank and auto_logrank.available %}
+      {% if auto_logrank and auto_logrank.available and auto_logrank.record_previews %}
       <section class="result-card">
         <h2>Record Preview (first 10 rows each group)</h2>
-        <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
-        <pre class="json-output">{{ auto_logrank.group_a_records_preview | tojson(indent=2) }}</pre>
-        <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
-        <pre class="json-output">{{ auto_logrank.group_b_records_preview | tojson(indent=2) }}</pre>
+        {% for preview in auto_logrank.record_previews %}
+        <p><strong>{{ preview.group_name }}</strong> ({{ preview.record_count }} rows)</p>
+        <pre class="json-output">{{ preview.records_preview | tojson(indent=2) }}</pre>
+        {% endfor %}
 
         <details>
           <summary>Show reconstructed records</summary>
-          <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
-          <pre class="json-output">{{ auto_logrank.group_a_records | tojson(indent=2) }}</pre>
-          <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
-          <pre class="json-output">{{ auto_logrank.group_b_records | tojson(indent=2) }}</pre>
+          {% for preview in auto_logrank.record_previews %}
+          <p><strong>{{ preview.group_name }}</strong></p>
+          <pre class="json-output">{{ preview.records | tojson(indent=2) }}</pre>
+          {% endfor %}
         </details>
       </section>
       {% endif %}
@@ -157,7 +320,12 @@
       {% if metadata_output %}
       <section class="result-card">
         <h2>Warnings & Confidence</h2>
+        {% if auto_logrank and auto_logrank.display_confidence is defined %}
+        <p><strong>Confidence:</strong> {{ "%.3f"|format(auto_logrank.display_confidence) }}</p>
+        <p class="small-note">{{ auto_logrank.confidence_note }}</p>
+        {% else %}
         <p><strong>Confidence:</strong> {{ "%.3f"|format(metadata_output.confidence) }}</p>
+        {% endif %}
         {% if metadata_output.warnings %}
         <ul>
           {% for item in metadata_output.warnings %}

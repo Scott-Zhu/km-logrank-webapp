@@ -1,6 +1,7 @@
 from math import erfc, sqrt
 from pathlib import Path
 import json
+from itertools import combinations
 
 from dotenv import load_dotenv
 from flask import (
@@ -15,7 +16,12 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
-from llm_extraction import KMVisionExtractor, LLMExtractionError, image_sha256
+from llm_extraction import (
+    KMVisionExtractor,
+    LLMExtractionError,
+    cap_confidence_for_quality,
+    image_sha256,
+)
 
 # Load local .env values if present (safe for local development).
 load_dotenv()
@@ -130,6 +136,176 @@ def compute_logrank_test(
     return {"chi_square": chi_square, "p_value": p_value}
 
 
+def _normalize_group_records(
+    groups_records: list[dict[str, list[dict[str, float | int]]]],
+) -> tuple[list[dict[str, float | int | str]], list[str]]:
+    long_form_records: list[dict[str, float | int | str]] = []
+    warnings: list[str] = []
+
+    for group in groups_records:
+        group_name = str(group.get("group_name", "Unnamed group"))
+        records = group.get("records", [])
+
+        if not isinstance(records, list) or not records:
+            warnings.append(f"Skipped '{group_name}' because it has no reconstructed records.")
+            continue
+
+        normalized_rows: list[dict[str, float | int | str]] = []
+        for row_index, row in enumerate(records, start=1):
+            try:
+                duration = float(row["time"])
+                event = int(row["event"])
+            except (KeyError, TypeError, ValueError):
+                warnings.append(
+                    f"Skipped '{group_name}' because record {row_index} has invalid time/event values."
+                )
+                normalized_rows = []
+                break
+
+            if duration < 0 or event not in {0, 1}:
+                warnings.append(
+                    f"Skipped '{group_name}' because record {row_index} has out-of-range time/event values."
+                )
+                normalized_rows = []
+                break
+
+            normalized_rows.append({"duration": duration, "event": event, "group": group_name})
+
+        if normalized_rows:
+            long_form_records.extend(normalized_rows)
+
+    return long_form_records, warnings
+
+
+def run_logrank_analysis(
+    groups_records: list[dict[str, list[dict[str, float | int]]]],
+    include_pairwise: bool = True,
+    alpha: float = 0.05,
+    correction_method: str = "bonferroni",
+    pairwise_policy: str = "show",
+) -> dict:
+    from lifelines.statistics import logrank_test, multivariate_logrank_test
+
+    long_form_records, validation_warnings = _normalize_group_records(groups_records)
+    if not long_form_records:
+        return {
+            "available": False,
+            "message": "No valid reconstructed records were available for log-rank analysis.",
+            "warnings": validation_warnings,
+        }
+
+    unique_groups = sorted({str(row["group"]) for row in long_form_records})
+    if len(unique_groups) < 2:
+        return {
+            "available": False,
+            "message": "Log-rank testing requires at least 2 valid groups.",
+            "warnings": validation_warnings,
+            "group_count": len(unique_groups),
+            "group_names": unique_groups,
+        }
+
+    durations = [float(row["duration"]) for row in long_form_records]
+    events = [int(row["event"]) for row in long_form_records]
+    labels = [str(row["group"]) for row in long_form_records]
+
+    result: dict = {
+        "available": True,
+        "analysis_type": "two_group" if len(unique_groups) == 2 else "multigroup",
+        "group_count": len(unique_groups),
+        "group_names": unique_groups,
+        "alpha": alpha,
+        "correction_method": correction_method,
+        "warnings": validation_warnings,
+        "pairwise_policy": pairwise_policy,
+    }
+
+    if len(unique_groups) == 2:
+        group_a, group_b = unique_groups
+        durations_a = [float(row["duration"]) for row in long_form_records if row["group"] == group_a]
+        events_a = [int(row["event"]) for row in long_form_records if row["group"] == group_a]
+        durations_b = [float(row["duration"]) for row in long_form_records if row["group"] == group_b]
+        events_b = [int(row["event"]) for row in long_form_records if row["group"] == group_b]
+
+        output = logrank_test(durations_a, durations_b, event_observed_A=events_a, event_observed_B=events_b)
+        p_value = float(output.p_value)
+        result.update(
+            {
+                "group_a_name": group_a,
+                "group_b_name": group_b,
+                "chi_square": float(output.test_statistic),
+                "degrees_of_freedom": 1,
+                "p_value": p_value,
+                "interpretation": "Groups differ (p < 0.05)."
+                if p_value < alpha
+                else "No clear difference (p >= 0.05).",
+            }
+        )
+        return result
+
+    overall = multivariate_logrank_test(durations, labels, events)
+    overall_p = float(overall.p_value)
+    result.update(
+        {
+            "chi_square": float(overall.test_statistic),
+            "degrees_of_freedom": len(unique_groups) - 1,
+            "p_value": overall_p,
+            "interpretation": "The survival curves are not all equal; at least one group differs."
+            if overall_p < alpha
+            else "No statistically significant overall difference was detected.",
+        }
+    )
+
+    pairwise_rows: list[dict[str, str | float | bool]] = []
+    if include_pairwise and pairwise_policy != "suppress":
+        pairs = list(combinations(unique_groups, 2))
+        raw_results: list[dict[str, str | float]] = []
+
+        for group_a, group_b in pairs:
+            durations_a = [float(row["duration"]) for row in long_form_records if row["group"] == group_a]
+            events_a = [int(row["event"]) for row in long_form_records if row["group"] == group_a]
+            durations_b = [float(row["duration"]) for row in long_form_records if row["group"] == group_b]
+            events_b = [int(row["event"]) for row in long_form_records if row["group"] == group_b]
+
+            pair_result = logrank_test(
+                durations_a,
+                durations_b,
+                event_observed_A=events_a,
+                event_observed_B=events_b,
+            )
+            raw_results.append(
+                {
+                    "group_a": group_a,
+                    "group_b": group_b,
+                    "chi_square": float(pair_result.test_statistic),
+                    "unadjusted_p": float(pair_result.p_value),
+                }
+            )
+
+        comparisons = len(raw_results)
+        for row in raw_results:
+            adjusted_p = row["unadjusted_p"]
+            if correction_method == "bonferroni" and comparisons > 0:
+                adjusted_p = min(float(row["unadjusted_p"]) * comparisons, 1.0)
+
+            pairwise_rows.append(
+                {
+                    "group_a": str(row["group_a"]),
+                    "group_b": str(row["group_b"]),
+                    "chi_square": float(row["chi_square"]),
+                    "unadjusted_p": float(row["unadjusted_p"]),
+                    "adjusted_p": float(adjusted_p),
+                    "significant_after_adjustment": float(adjusted_p) < alpha,
+                }
+            )
+
+    result["pairwise_rows"] = pairwise_rows
+    if pairwise_policy == "exploratory" and pairwise_rows:
+        result["pairwise_message"] = "Pairwise comparisons are low-confidence exploratory due to extraction quality."
+    if pairwise_policy == "suppress":
+        result["pairwise_message"] = "Pairwise comparisons were suppressed because extraction quality is very low."
+    return result
+
+
 def _cache_path_for_hash(image_hash: str) -> Path:
     return app.config["CACHE_FOLDER"] / f"{image_hash}.json"
 
@@ -146,57 +322,134 @@ def _save_cached_extraction(image_hash: str, payload: dict) -> None:
 
 
 def _build_auto_logrank(payload: dict) -> dict:
-    groups = payload.get("groups", [])
-    if not isinstance(groups, list) or len(groups) < 2:
-        return {"available": False, "message": "At least two groups are required for a two-group log-rank test."}
-    if len(groups) > 2:
-        return {"available": False, "message": "More than two groups were extracted; this app runs two-group log-rank only."}
+    canonical = payload.get("canonical_reconstruction", {})
+    canonical_groups = canonical.get("groups", [])
+    if not isinstance(canonical_groups, list):
+        return {"available": False, "message": "Invalid extraction payload: canonical reconstruction is missing."}
 
-    group_a = groups[0]
-    group_b = groups[1]
-    records_a = group_a.get("estimated_records", [])
-    records_b = group_b.get("estimated_records", [])
-    if not records_a or not records_b:
-        return {"available": False, "message": "One or both groups have no reconstructed estimated records."}
-
-    output = compute_logrank_test(records_a, records_b)
     group_summaries = []
-    for group in groups:
-        records = group.get("estimated_records", [])
+    interval_rows = []
+    record_previews = []
+    groups_records = []
+    quality_summary = payload.get("quality_summary", {})
+    pairwise_policy = quality_summary.get("pairwise_recommendation", "show")
+    reliability_notes: list[str] = []
+
+    for group in canonical_groups:
+        group_name = group.get("group_name", "")
+        records = group.get("records", [])
+        terminal_known = bool(group.get("terminal_risk_known", False))
+        unresolved_tail_count = int(group.get("unresolved_tail_count", 0) or 0)
+        if not terminal_known:
+            reliability_notes.append(
+                f"{group_name or 'Unnamed group'} has missing terminal risk-table cells; terminal count kept unknown."
+            )
+        if unresolved_tail_count > 0:
+            reliability_notes.append(
+                f"{group_name or 'Unnamed group'} retains {unresolved_tail_count} unresolved tail subjects."
+            )
+
         group_summaries.append(
             {
-                "group_name": group.get("name", ""),
+                "group_name": group_name,
                 "initial_n": group.get("initial_n"),
                 "last_visible_curve_time": group.get("last_visible_curve_time"),
                 "last_visible_survival": group.get("last_visible_curve_survival"),
-                "number_of_visible_drops": len([p for p in group.get("step_points_visible", []) if p.get("support_type") == "visible"]),
-                "number_of_inferred_overlap_drops": len(group.get("overlap_inferred_drop_times", [])),
-                "number_of_reconstructed_events": sum(1 for r in records if int(r.get("event", 0)) == 1),
-                "number_of_reconstructed_censors": sum(1 for r in records if int(r.get("event", 0)) == 0),
+                "number_of_visible_drops": group.get("visible_drop_count", ""),
+                "number_of_inferred_overlap_drops": group.get("overlap_inferred_drop_count", ""),
+                "number_of_reconstructed_events": int(group.get("event_total", 0)),
+                "number_of_reconstructed_censors": int(group.get("censor_total", 0)),
+                "terminal_risk_known": terminal_known,
+                "unresolved_tail_count": unresolved_tail_count,
             }
         )
 
-    interval_rows = group_a.get("interval_summary", []) + group_b.get("interval_summary", [])
-    interpretation = "Groups differ (p < 0.05)." if output["p_value"] < 0.05 else "No clear difference (p >= 0.05)."
+        interval_rows.extend(group.get("interval_rows", []))
+        record_previews.append(
+            {
+                "group_name": group_name or "Unnamed group",
+                "records": records,
+                "records_preview": records[:10],
+                "record_count": len(records),
+            }
+        )
+        groups_records.append({"group_name": group_name or "Unnamed group", "records": records})
 
-    return {
-        "available": True,
-        "group_a_name": group_a.get("name", "Group A"),
-        "group_b_name": group_b.get("name", "Group B"),
-        "group_a_count": len(records_a),
-        "group_b_count": len(records_b),
-        "group_a_records": records_a,
-        "group_b_records": records_b,
-        "group_a_records_preview": records_a[:10],
-        "group_b_records_preview": records_b[:10],
-        "group_summaries": group_summaries,
-        "interval_rows": interval_rows,
-        "group_a_last_visible_curve_time": group_a.get("last_visible_curve_time"),
-        "group_b_last_visible_curve_time": group_b.get("last_visible_curve_time"),
-        "chi_square": output["chi_square"],
-        "p_value": output["p_value"],
-        "interpretation": interpretation,
+    accounting_passed = bool(canonical.get("accounting_identities_passed", False))
+    interval_passed = bool(canonical.get("interval_conservation_passed", False))
+    severe_ordering_issue = any("group-order contradiction" in reason for reason in quality_summary.get("figure_quality_reasons", []))
+    figure_quality = str(quality_summary.get("figure_quality_grade", "high")).lower()
+    pairwise_policy = "show"
+    if not (accounting_passed and interval_passed) or severe_ordering_issue or figure_quality == "low":
+        pairwise_policy = "suppress"
+
+    analysis = run_logrank_analysis(
+        groups_records=groups_records,
+        include_pairwise=True,
+        pairwise_policy=pairwise_policy,
+    )
+    analysis["group_summaries"] = group_summaries
+    analysis["interval_rows"] = interval_rows
+    analysis["record_previews"] = record_previews
+    analysis["quality_summary"] = quality_summary
+    analysis["reliability_notes"] = unique_ordered_strings(reliability_notes)
+    analysis["canonical_reconstruction_note"] = "All tables and tests below are derived from one repaired canonical reconstruction."
+    analysis["canonical_checks"] = {
+        "accounting_identities_passed": accounting_passed,
+        "interval_conservation_passed": interval_passed,
     }
+
+    capped_confidence, confidence_note = cap_confidence_for_quality(
+        float(payload.get("confidence", 0.0)),
+        figure_quality,
+    )
+    analysis["display_confidence"] = capped_confidence
+    analysis["confidence_note"] = confidence_note
+
+    if analysis.get("analysis_type") == "multigroup" and analysis.get("pairwise_rows"):
+        if any(row.get("significant_after_adjustment") for row in analysis["pairwise_rows"]):
+            analysis["pairwise_interpretation"] = (
+                "Pairwise differences with adjusted p-values below 0.05 may indicate specific group-level separation. "
+                "Treat pairwise findings as exploratory.")
+        else:
+            analysis["pairwise_interpretation"] = (
+                "No pairwise comparison remained significant after adjustment. "
+                "Treat pairwise findings as exploratory.")
+        if pairwise_policy == "exploratory":
+            analysis["pairwise_interpretation"] = (
+                "Pairwise rows are shown as low-confidence exploratory output due to extraction quality limitations."
+            )
+    elif analysis.get("analysis_type") == "multigroup" and pairwise_policy == "suppress":
+        suppression_reason = []
+        if not accounting_passed:
+            suppression_reason.append("canonical accounting checks did not pass")
+        if not interval_passed:
+            suppression_reason.append("interval conservation checks did not pass")
+        if severe_ordering_issue:
+            suppression_reason.append("group-order contradiction remains unresolved")
+        if figure_quality == "low":
+            suppression_reason.append("overall figure quality is LOW")
+        message = "Pairwise comparisons were suppressed"
+        if suppression_reason:
+            message += ": " + "; ".join(suppression_reason) + "."
+        analysis["pairwise_interpretation"] = message
+        analysis["pairwise_message"] = message
+
+    if analysis.get("analysis_type") == "multigroup" and analysis.get("p_value", 1.0) < analysis.get("alpha", 0.05):
+        analysis["overall_plain_english"] = "At least one survival curve differs from the others."
+
+    return analysis
+
+
+def unique_ordered_strings(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
 
 
 @app.route("/")
@@ -296,7 +549,7 @@ def results():
             metadata_json = json.dumps(payload, indent=2)
             try:
                 auto_logrank = _build_auto_logrank(payload)
-            except ValueError as exc:
+            except (ValueError, ImportError) as exc:
                 auto_logrank = {"available": False, "message": str(exc)}
 
         return render_template(

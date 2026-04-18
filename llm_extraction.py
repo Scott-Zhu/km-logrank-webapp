@@ -8,7 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 from openai import OpenAI
 
 
@@ -25,6 +25,16 @@ STEP_POINT_SCHEMA: dict[str, Any] = {
         "survival_probability": {"type": "number", "minimum": 0, "maximum": 1},
         "support_type": {"type": "string", "enum": ["visible", "inferred_from_overlap"]},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+}
+
+GROUP_ORDER_ANCHOR_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["x_time", "survival_probability"],
+    "properties": {
+        "x_time": {"type": "number", "minimum": 0},
+        "survival_probability": {"type": "number", "minimum": 0, "maximum": 1},
     },
 }
 
@@ -72,7 +82,10 @@ LAYOUT_SCHEMA: dict[str, Any] = {
                 "required": ["group_name", "counts"],
                 "properties": {
                     "group_name": {"type": "string"},
-                    "counts": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+                    "counts": {
+                        "type": "array",
+                        "items": {"type": ["integer", "null"], "minimum": 0},
+                    },
                 },
             },
         },
@@ -95,6 +108,11 @@ CURVE_SCHEMA: dict[str, Any] = {
                     "name",
                     "initial_n",
                     "risk_table_counts",
+                    "terminal_risk_known",
+                    "visible_censor_density",
+                    "confidence_band_present",
+                    "extraction_quality_flags",
+                    "order_anchor_points",
                     "step_points_visible",
                     "visible_drop_times",
                     "visible_horizontal_segments",
@@ -109,7 +127,21 @@ CURVE_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "name": {"type": "string"},
                     "initial_n": {"type": ["integer", "null"], "minimum": 1},
-                    "risk_table_counts": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+                    "risk_table_counts": {
+                        "type": "array",
+                        "items": {"type": ["integer", "null"], "minimum": 0},
+                    },
+                    "terminal_risk_known": {"type": "boolean"},
+                    "visible_censor_density": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high"],
+                    },
+                    "confidence_band_present": {"type": "boolean"},
+                    "extraction_quality_flags": {"type": "array", "items": {"type": "string"}},
+                    "order_anchor_points": {
+                        "type": "array",
+                        "items": GROUP_ORDER_ANCHOR_SCHEMA,
+                    },
                     "step_points_visible": {"type": "array", "items": STEP_POINT_SCHEMA},
                     "visible_drop_times": {"type": "array", "items": {"type": "number", "minimum": 0}},
                     "visible_horizontal_segments": {
@@ -257,25 +289,39 @@ class KMVisionExtractor:
         payload = apply_overlap_stage(payload, overlap)
 
         payload, suspicious_rules, repair_notes = validate_and_repair_payload(payload)
+        payload, order_suspicious, order_repairs = apply_group_order_sanity_checks(payload)
+        suspicious_rules.extend(order_suspicious)
+        repair_notes.extend(order_repairs)
+
         payload, overlap_repairs = infer_hidden_overlap_drops(payload)
         repair_notes.extend(overlap_repairs)
 
-        if should_trigger_failure_pattern_review(payload):
+        review_triggered = should_trigger_failure_pattern_review(payload) or bool(order_suspicious)
+        if review_triggered:
             review = self._review_failure_pattern_stage(client, views, payload)
             payload = apply_review_corrections(payload, review)
             suspicious_rules.extend([f"review: {item}" for item in review.get("issues", [])])
             payload, more_suspicious, more_repairs = validate_and_repair_payload(payload)
             suspicious_rules.extend(more_suspicious)
             repair_notes.extend(more_repairs)
+            payload, post_review_order_suspicious, post_review_order_repairs = apply_group_order_sanity_checks(payload)
+            suspicious_rules.extend(post_review_order_suspicious)
+            repair_notes.extend(post_review_order_repairs)
 
         payload, truncation_used, reconstruction_flags = reconstruct_records_conservative(payload)
+        payload, conservation_flags = apply_interval_conservation_validation(payload)
+        reconstruction_flags.extend(conservation_flags)
+        payload, canonical_flags = build_canonical_reconstruction(payload)
+        reconstruction_flags.extend(canonical_flags)
+        payload, quality_summary = grade_extraction_quality(payload, suspicious_rules, repair_notes)
 
         payload["reconstruction_summary"] = {
             "suspicious_rules_triggered": unique_list(suspicious_rules),
             "python_repairs_applied": unique_list(repair_notes),
-            "llm_review_used": should_trigger_failure_pattern_review(payload),
+            "llm_review_used": review_triggered,
             "conservative_truncation_used": truncation_used,
-            "warning_flags": reconstruction_flags,
+            "warning_flags": unique_list(reconstruction_flags),
+            "quality_summary": quality_summary,
         }
         payload["warnings"] = unique_list(payload.get("warnings", []) + suspicious_rules)
         return payload
@@ -285,13 +331,22 @@ class KMVisionExtractor:
             client,
             instructions=(
                 "Stage 1: extract chart layout only. "
+                "Use both original and processed views. "
                 "Do not infer patient-level records. Return strict JSON only."
             ),
             prompt=(
                 "Extract plot area bounds, x/y tick labels, legend names, and number-at-risk table. "
+                "Treat '-', blank, or unavailable risk cells as null/unknown, never as zero. "
                 "If uncertain, keep lists short and add warnings."
             ),
-            images=[views["full_data_url"], views["risk_data_url"]],
+            images=[
+                views["full_data_url"],
+                views["risk_data_url"],
+                views["legend_data_url"],
+                views["full_processed_data_url"],
+                views["risk_processed_data_url"],
+                views["legend_processed_data_url"],
+            ],
             schema_name="km_layout_stage",
             schema=LAYOUT_SCHEMA,
         )
@@ -303,14 +358,28 @@ class KMVisionExtractor:
                 "Stage 2: curve-only extraction. Hard rules: do NOT identify drops only by longest visible vertical segment. "
                 "If curves overlap then separate, consider whether both groups changed near separation. "
                 "Distinguish visible vs inferred_from_overlap support. "
+                "Separate main solid step line from confidence/shaded bands. "
+                "Treat dense censor ticks as censor evidence, not step drops. "
                 "Do not extend to x-axis max when curve ends earlier."
             ),
             prompt=(
                 "Extract per-group step_points_visible with support_type and confidence. "
+                "Return distinct evidence for main step line, censor ticks, and confidence-band presence. "
+                "Include risk_table_counts with null when missing, terminal_risk_known true/false, "
+                "visible_censor_density, confidence_band_present, extraction_quality_flags, and order_anchor_points. "
+                "Do not follow confidence band boundaries as the main curve. "
+                "Do not infer missing terminal risk-table cells as zero. "
                 "Also return overlap_inferred_drop_times, visible_drop_times, last_visible_curve_time, and tail geometry. "
                 f"Layout context: {json.dumps(layout)}"
             ),
-            images=[views["plot_data_url"], views["full_data_url"]],
+            images=[
+                views["plot_data_url"],
+                views["full_data_url"],
+                views["plot_processed_data_url"],
+                views["full_processed_data_url"],
+                views["legend_data_url"],
+                views["legend_processed_data_url"],
+            ],
             schema_name="km_curve_stage",
             schema=CURVE_SCHEMA,
         )
@@ -321,13 +390,19 @@ class KMVisionExtractor:
             instructions=(
                 "Overlap-aware curve reasoning stage. "
                 "Do not rely only on visible segment length. "
+                "Validate that selected points follow the solid step line, not confidence-band edges. "
                 "If one curve is hidden then diverges, add at most one conservative inferred overlap drop in that ambiguous zone."
             ),
             prompt=(
                 "Given this preliminary extraction, refine overlap handling and label support_type per step. "
                 f"Preliminary extraction: {json.dumps(payload)}"
             ),
-            images=[views["plot_data_url"], views["full_data_url"]],
+            images=[
+                views["plot_data_url"],
+                views["full_data_url"],
+                views["plot_processed_data_url"],
+                views["full_processed_data_url"],
+            ],
             schema_name="km_overlap_stage",
             schema=OVERLAP_SCHEMA,
         )
@@ -344,7 +419,13 @@ class KMVisionExtractor:
                 "(3) which drops visible vs inferred_from_overlap? "
                 f"Extraction JSON: {json.dumps(payload)}"
             ),
-            images=[views["plot_data_url"], views["full_data_url"]],
+            images=[
+                views["plot_data_url"],
+                views["full_data_url"],
+                views["plot_processed_data_url"],
+                views["full_processed_data_url"],
+                views["legend_data_url"],
+            ],
             schema_name="km_review_stage",
             schema=REVIEW_SCHEMA,
         )
@@ -424,8 +505,14 @@ class KMVisionExtractor:
         for group in groups:
             name = str(group.get("name", ""))
             group.setdefault("overlap_inferred_drop_times", [])
+            group.setdefault("visible_censor_density", "medium")
+            group.setdefault("confidence_band_present", False)
+            group.setdefault("extraction_quality_flags", [])
+            group.setdefault("order_anchor_points", [])
             if not group.get("risk_table_counts"):
                 group["risk_table_counts"] = risk_rows.get(name.lower(), [])
+            counts = group.get("risk_table_counts", [])
+            group["terminal_risk_known"] = bool(counts) and counts[-1] is not None
 
         return {
             "title": layout.get("title", ""),
@@ -447,12 +534,25 @@ def create_image_views(image_path: Path) -> dict[str, Any]:
     image = Image.open(image_path).convert("RGB")
     width, height = image.size
     split_y = max(1, min(height - 1, int(height * 0.72)))
+    legend_y1 = max(1, int(height * 0.25))
+    legend_x0 = max(0, int(width * 0.60))
     plot_crop = image.crop((0, 0, width, split_y))
     risk_crop = image.crop((0, split_y, width, height))
+    legend_crop = image.crop((legend_x0, 0, width, legend_y1))
+    processed_full = preprocess_km_view(image)
+    processed_plot = preprocess_km_view(plot_crop)
+    processed_risk = preprocess_risk_view(risk_crop)
+    processed_legend = preprocess_km_view(legend_crop)
+
     return {
         "full_data_url": pil_image_to_data_url(image, image_path.suffix),
         "plot_data_url": pil_image_to_data_url(plot_crop, image_path.suffix),
         "risk_data_url": pil_image_to_data_url(risk_crop, image_path.suffix),
+        "legend_data_url": pil_image_to_data_url(legend_crop, image_path.suffix),
+        "full_processed_data_url": pil_image_to_data_url(processed_full, image_path.suffix),
+        "plot_processed_data_url": pil_image_to_data_url(processed_plot, image_path.suffix),
+        "risk_processed_data_url": pil_image_to_data_url(processed_risk, image_path.suffix),
+        "legend_processed_data_url": pil_image_to_data_url(processed_legend, image_path.suffix),
     }
 
 
@@ -462,6 +562,26 @@ def pil_image_to_data_url(image: Image.Image, suffix: str) -> str:
     buffer = BytesIO()
     image.save(buffer, format=fmt)
     return f"data:{mime};base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
+
+
+def preprocess_km_view(image: Image.Image) -> Image.Image:
+    """
+    Lightweight deterministic preprocessing to emphasize solid step lines while
+    reducing low-opacity confidence-band influence.
+    """
+    rgb = image.convert("RGB")
+    contrast = ImageEnhance.Contrast(rgb).enhance(1.35)
+    sharpened = contrast.filter(ImageFilter.SHARPEN)
+    return ImageEnhance.Color(sharpened).enhance(1.15)
+
+
+def preprocess_risk_view(image: Image.Image) -> Image.Image:
+    """
+    Preserve thin glyphs while improving readability of risk-table numbers and placeholders.
+    """
+    gray = image.convert("L")
+    boosted = ImageEnhance.Contrast(gray).enhance(1.4)
+    return boosted.filter(ImageFilter.MedianFilter(size=3)).convert("RGB")
 
 
 def unique_list(values: list[Any]) -> list[Any]:
@@ -565,6 +685,9 @@ def validate_and_repair_payload(payload: dict[str, Any]) -> tuple[dict[str, Any]
             last_survival = s
 
         group["step_points_visible"] = cleaned
+        cleaned, reliability_notes = enforce_step_signal_reliability(group, cleaned)
+        repairs.extend([f"{name}: {note}" for note in reliability_notes])
+        group["step_points_visible"] = cleaned
         if cleaned:
             group["last_visible_curve_time"] = max(float(group.get("last_visible_curve_time", 0.0)), float(cleaned[-1]["time"]))
             group["last_visible_curve_survival"] = float(cleaned[-1]["survival_probability"])
@@ -583,6 +706,90 @@ def validate_and_repair_payload(payload: dict[str, Any]) -> tuple[dict[str, Any]
         group["visible_drop_times"] = sorted(unique_list(drop_times))
 
     return payload, unique_list(suspicious), unique_list(repairs)
+
+
+def apply_group_order_sanity_checks(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str], list[str]]:
+    """
+    Validate group ordering at anchor points (mid/right-tail) and repair obvious swaps.
+    """
+    suspicious: list[str] = []
+    repairs: list[str] = []
+    groups = payload.get("groups", [])
+    if len(groups) < 2:
+        return payload, suspicious, repairs
+
+    order_at_mid = rank_groups_by_anchor(groups, anchor_label="mid")
+    order_at_tail = rank_groups_by_anchor(groups, anchor_label="tail")
+    if order_at_mid and order_at_tail and order_at_mid != order_at_tail:
+        suspicious.append("group-order contradiction between mid-follow-up and right-tail ordering")
+
+    if payload.get("number_of_groups", 0) >= 2 and order_at_tail:
+        legend_order = [str(g.get("name", "")) for g in groups]
+        if legend_order != order_at_tail:
+            suspicious.append("legend-order differs from right-tail visible ordering")
+            # Conservative repair: reassign group labels by right-tail ordering once.
+            reordered = sorted(groups, key=lambda g: order_at_tail.index(str(g.get("name", ""))) if str(g.get("name", "")) in order_at_tail else 999)
+            payload["groups"] = reordered
+            repairs.append("reordered group assignments to match right-tail visible ordering")
+
+    return payload, unique_list(suspicious), unique_list(repairs)
+
+
+def rank_groups_by_anchor(groups: list[dict[str, Any]], anchor_label: str) -> list[str]:
+    ranked: list[tuple[str, float]] = []
+    for group in groups:
+        name = str(group.get("name", ""))
+        anchors = group.get("order_anchor_points", [])
+        if not anchors:
+            anchors = [
+                {"x_time": float(group.get("last_visible_curve_time", 0.0)), "survival_probability": float(group.get("last_visible_curve_survival", 0.0))}
+            ]
+
+        if anchor_label == "mid":
+            anchor_value = sorted(anchors, key=lambda p: float(p.get("x_time", 0.0)))[len(anchors) // 2]
+        else:
+            anchor_value = max(anchors, key=lambda p: float(p.get("x_time", 0.0)))
+        ranked.append((name, float(anchor_value.get("survival_probability", 0.0))))
+
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    return [name for name, _ in ranked]
+
+
+def enforce_step_signal_reliability(group: dict[str, Any], points: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+    """
+    Downweight likely fake drops from dense censoring or confidence-band edges.
+    """
+    notes: list[str] = []
+    if len(points) < 2:
+        return points, notes
+
+    confidence_band_present = bool(group.get("confidence_band_present", False))
+    high_censor_density = group.get("visible_censor_density") == "high"
+    if not confidence_band_present and not high_censor_density:
+        return points, notes
+
+    filtered = [points[0]]
+    for idx in range(1, len(points)):
+        prev = filtered[-1]
+        curr = points[idx]
+        dt = float(curr["time"]) - float(prev["time"])
+        ds = float(prev["survival_probability"]) - float(curr["survival_probability"])
+        support_type = str(curr.get("support_type", "visible"))
+        confidence = float(curr.get("confidence", 0.7))
+        likely_artifact = (
+            dt <= 0.75
+            and ds <= 0.02
+            and (support_type == "inferred_from_overlap" or confidence < 0.55)
+            and (confidence_band_present or high_censor_density)
+        )
+        if likely_artifact:
+            notes.append(f"removed likely non-step artifact at t={curr['time']}")
+            continue
+        filtered.append(curr)
+
+    if len(filtered) != len(points):
+        group.setdefault("extraction_quality_flags", []).append("artifact_like_microdrops_filtered")
+    return filtered, unique_list(notes)
 
 
 def infer_hidden_overlap_drops(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
@@ -690,25 +897,30 @@ def reconstruct_records_conservative(payload: dict[str, Any]) -> tuple[dict[str,
     risk_times = sorted(float(t) for t in payload.get("risk_table_times", []))
     flags: list[str] = []
     truncation_used = False
+    allowed_rounding_tolerance = 1
 
     for group in payload.get("groups", []):
         points = sorted(group.get("step_points_visible", []), key=lambda p: float(p.get("time", 0.0)))
         if not points:
             group["estimated_records"] = []
             group["interval_summary"] = []
+            group["unresolved_tail_count"] = 0
             continue
 
         last_visible_time = float(group.get("last_visible_curve_time", points[-1]["time"]))
         points = [p for p in points if float(p["time"]) <= last_visible_time + 1e-6]
+        risk_counts_raw = group.get("risk_table_counts", [])
+        risk_counts: list[int | None] = [int(v) if isinstance(v, int) else None for v in risk_counts_raw]
 
-        risk_counts = [int(v) for v in group.get("risk_table_counts", []) if isinstance(v, int)]
-        risk_caps = [max(0, risk_counts[i] - risk_counts[i + 1]) for i in range(min(len(risk_times), len(risk_counts)) - 1)]
-        n_risk = int(group.get("initial_n") or (risk_counts[0] if risk_counts else 100))
+        initial_from_table = next((v for v in risk_counts if isinstance(v, int)), None)
+        n_risk = int(group.get("initial_n") or (initial_from_table if initial_from_table is not None else 100))
 
         records: list[dict[str, float | int]] = []
         interval_summary: list[dict[str, Any]] = []
-        events_used = [0 for _ in risk_caps]
-        censors_used = [0 for _ in risk_caps]
+        interval_count = max(0, len(risk_times) - 1)
+        events_used = [0 for _ in range(interval_count)]
+        censors_used = [0 for _ in range(interval_count)]
+        unresolved_tail_count = 0
 
         for idx in range(1, len(points)):
             prev = points[idx - 1]
@@ -723,11 +935,23 @@ def reconstruct_records_conservative(payload: dict[str, Any]) -> tuple[dict[str,
             events = max(1, events)
 
             interval_idx = interval_index_for_time(t, risk_times)
-            if interval_idx is not None and interval_idx < len(risk_caps):
-                remaining = max(0, risk_caps[interval_idx] - events_used[interval_idx] - censors_used[interval_idx])
+            if interval_idx is not None and interval_idx < interval_count:
+                at_risk_start = risk_counts[interval_idx] if interval_idx < len(risk_counts) else None
+                next_known = risk_counts[interval_idx + 1] if interval_idx + 1 < len(risk_counts) else None
+                conservative_cap = at_risk_start if isinstance(at_risk_start, int) else n_risk
+                if isinstance(at_risk_start, int) and isinstance(next_known, int):
+                    conservative_cap = min(
+                        conservative_cap,
+                        max(0, at_risk_start - next_known + allowed_rounding_tolerance),
+                    )
+                remaining = max(
+                    0,
+                    int(conservative_cap) - int(events_used[interval_idx]) - int(censors_used[interval_idx]),
+                )
                 if events > remaining:
                     events = remaining
                     truncation_used = True
+                    flags.append("event_count_truncated_by_interval_conservation")
 
             events = min(events, n_risk)
             for _ in range(events):
@@ -736,9 +960,14 @@ def reconstruct_records_conservative(payload: dict[str, Any]) -> tuple[dict[str,
             if interval_idx is not None and interval_idx < len(events_used):
                 events_used[interval_idx] += events
 
-        # allocate leftover removals as censors
-        for i, cap in enumerate(risk_caps):
-            remaining = max(0, cap - events_used[i] - censors_used[i])
+        # allocate leftover removals as censors only when interval constraints are known.
+        for i in range(interval_count):
+            at_risk_start = risk_counts[i] if i < len(risk_counts) else None
+            next_known = risk_counts[i + 1] if i + 1 < len(risk_counts) else None
+            if not isinstance(at_risk_start, int) or not isinstance(next_known, int):
+                continue
+            cap = max(0, at_risk_start - next_known + allowed_rounding_tolerance)
+            remaining = max(0, int(cap) - int(events_used[i]) - int(censors_used[i]))
             if remaining <= 0:
                 continue
             censor_time = max(risk_times[i], min(risk_times[i + 1], last_visible_time) - 0.001)
@@ -757,6 +986,7 @@ def reconstruct_records_conservative(payload: dict[str, Any]) -> tuple[dict[str,
                 events_interval = sum(1 for r in records if int(r["event"]) == 1 and start <= float(r["time"]) <= end + 1e-6)
                 censors_interval = sum(1 for r in records if int(r["event"]) == 0 and start <= float(r["time"]) <= end + 1e-6)
                 at_risk_start = risk_counts[i] if i < len(risk_counts) else None
+                next_known = risk_counts[i + 1] if i + 1 < len(risk_counts) else None
 
                 if start >= 60 and len(visible_drops_in_interval) <= 1 and events_interval > 1:
                     # compress to one event + censors
@@ -771,6 +1001,24 @@ def reconstruct_records_conservative(payload: dict[str, Any]) -> tuple[dict[str,
                     events_interval = 1 if visible_drops_in_interval else 0
                     censors_interval = max(0, removed - events_interval)
 
+                max_allowed = at_risk_start if isinstance(at_risk_start, int) else None
+                if isinstance(at_risk_start, int) and isinstance(next_known, int):
+                    max_allowed = max(0, at_risk_start - next_known + allowed_rounding_tolerance)
+                if isinstance(max_allowed, int) and (events_interval + censors_interval) > max_allowed:
+                    overflow = (events_interval + censors_interval) - max_allowed
+                    flags.append("interval_overflow_corrected")
+                    trim_event_times = sorted(
+                        [float(r["time"]) for r in records if int(r["event"]) == 1 and start <= float(r["time"]) <= end + 1e-6],
+                        reverse=True,
+                    )
+                    for trim_time in trim_event_times[:overflow]:
+                        for record_idx, record in enumerate(records):
+                            if int(record["event"]) == 1 and abs(float(record["time"]) - trim_time) <= 1e-9:
+                                records.pop(record_idx)
+                                break
+                    events_interval = sum(1 for r in records if int(r["event"]) == 1 and start <= float(r["time"]) <= end + 1e-6)
+                    censors_interval = sum(1 for r in records if int(r["event"]) == 0 and start <= float(r["time"]) <= end + 1e-6)
+
                 interval_summary.append(
                     {
                         "interval": f"{start}-{end}",
@@ -778,18 +1026,377 @@ def reconstruct_records_conservative(payload: dict[str, Any]) -> tuple[dict[str,
                         "interval_end": end,
                         "group": group.get("name", ""),
                         "at_risk_start": at_risk_start,
+                        "next_known_at_risk": next_known,
                         "visible_drop_count": len(visible_drops_in_interval),
                         "estimated_events": events_interval,
                         "estimated_censors": censors_interval,
-                        "notes": "conservative allocation" if censors_interval > 0 else "",
+                        "notes": build_interval_note(
+                            at_risk_start=at_risk_start,
+                            next_known_at_risk=next_known,
+                            has_censor_allocation=censors_interval > 0,
+                            terminal_unknown=not bool(group.get("terminal_risk_known", False)),
+                        ),
                     }
                 )
+
+        if not bool(group.get("terminal_risk_known", False)):
+            unresolved_tail_count = max(0, n_risk)
+            if unresolved_tail_count > 0:
+                flags.append("unresolved_tail_subjects_retained")
 
         records = sorted(records, key=lambda r: (float(r["time"]), int(r["event"])))
         group["estimated_records"] = records
         group["interval_summary"] = interval_summary
+        group["unresolved_tail_count"] = unresolved_tail_count
 
     return payload, truncation_used, unique_list(flags)
+
+
+def build_interval_note(
+    at_risk_start: int | None,
+    next_known_at_risk: int | None,
+    has_censor_allocation: bool,
+    terminal_unknown: bool,
+) -> str:
+    notes: list[str] = []
+    if has_censor_allocation:
+        notes.append("conservative censor allocation")
+    if at_risk_start is not None and next_known_at_risk is not None:
+        notes.append("bounded by next known risk-table count")
+    if terminal_unknown:
+        notes.append("terminal risk unknown; unresolved tail allowed")
+    return "; ".join(notes)
+
+
+def apply_interval_conservation_validation(payload: dict[str, Any], allowed_rounding_tolerance: int = 1) -> tuple[dict[str, Any], list[str]]:
+    flags: list[str] = []
+    for group in payload.get("groups", []):
+        for row in group.get("interval_summary", []):
+            at_risk_start = row.get("at_risk_start")
+            estimated_events = int(row.get("estimated_events", 0))
+            estimated_censors = int(row.get("estimated_censors", 0))
+            total_removed = estimated_events + estimated_censors
+            if isinstance(at_risk_start, int) and total_removed > at_risk_start:
+                overflow = total_removed - at_risk_start
+                row["estimated_censors"] = max(0, estimated_censors - overflow)
+                row["notes"] = append_note(row.get("notes", ""), "post-check repaired to satisfy events+censors<=at_risk_start")
+                flags.append("interval_conservation_repaired")
+
+            next_known = row.get("next_known_at_risk")
+            if isinstance(at_risk_start, int) and isinstance(next_known, int):
+                max_allowed = max(0, at_risk_start - next_known + allowed_rounding_tolerance)
+                total_removed = int(row.get("estimated_events", 0)) + int(row.get("estimated_censors", 0))
+                if total_removed > max_allowed:
+                    overflow = total_removed - max_allowed
+                    row["estimated_censors"] = max(0, int(row.get("estimated_censors", 0)) - overflow)
+                    row["notes"] = append_note(row.get("notes", ""), "post-check repaired to next-known-risk bound")
+                    flags.append("next_known_bound_repaired")
+    return payload, unique_list(flags)
+
+
+def append_note(existing: str, note: str) -> str:
+    if not existing:
+        return note
+    if note in existing:
+        return existing
+    return f"{existing}; {note}"
+
+
+def build_canonical_reconstruction(payload: dict[str, Any], allowed_rounding_tolerance: int = 0) -> tuple[dict[str, Any], list[str]]:
+    """
+    Canonical interval convention:
+    - Each interval is interpreted as [t_i, t_{i+1}) except the final interval which is [t_i, t_{i+1}].
+    - Risk-table deltas are applied on these same intervals with no hidden +1 drift.
+    """
+    flags: list[str] = []
+    canonical_groups: list[dict[str, Any]] = []
+
+    for group in payload.get("groups", []):
+        rows = [dict(row) for row in group.get("interval_summary", [])]
+        rows = sorted(rows, key=lambda row: float(row.get("interval_start", 0.0)))
+        risk_counts = [int(v) if isinstance(v, int) else None for v in group.get("risk_table_counts", [])]
+        initial_n = int(group.get("initial_n") or next((v for v in risk_counts if isinstance(v, int)), 0))
+        terminal_known = bool(group.get("terminal_risk_known", False))
+
+        repaired_rows, row_flags = repair_interval_rows_to_deltas(rows, allowed_rounding_tolerance)
+        flags.extend([f"{group.get('name', 'group')}: {item}" for item in row_flags])
+
+        records = records_from_canonical_intervals(repaired_rows)
+        event_total = sum(int(row.get("estimated_events", 0)) for row in repaired_rows)
+        censor_total = sum(int(row.get("estimated_censors", 0)) for row in repaired_rows)
+
+        last_known_risk = last_known_risk_value(risk_counts)
+        final_known_risk = risk_counts[-1] if risk_counts and isinstance(risk_counts[-1], int) else None
+        unresolved_tail = max(0, initial_n - event_total - censor_total - (final_known_risk if terminal_known and isinstance(final_known_risk, int) else (last_known_risk or 0)))
+        if terminal_known and isinstance(final_known_risk, int):
+            unresolved_tail = 0
+
+        canonical_groups.append(
+            {
+                "group_name": group.get("name", ""),
+                "interval_rows": repaired_rows,
+                "records": records,
+                "event_total": event_total,
+                "censor_total": censor_total,
+                "unresolved_tail_count": unresolved_tail,
+                "terminal_risk_known": terminal_known,
+                "initial_n": initial_n,
+                "last_known_risk": last_known_risk,
+                "final_known_risk": final_known_risk,
+                "last_visible_curve_time": group.get("last_visible_curve_time"),
+                "last_visible_curve_survival": group.get("last_visible_curve_survival"),
+                "visible_drop_count": len(group.get("visible_drop_times", [])),
+                "overlap_inferred_drop_count": len(group.get("overlap_inferred_drop_times", [])),
+            }
+        )
+
+    interval_ok, interval_issues = validate_canonical_interval_rows(canonical_groups, allowed_rounding_tolerance)
+    identities_ok, identity_issues = validate_canonical_identities(canonical_groups)
+    if not identities_ok:
+        flags.extend([f"identity-repair: {issue}" for issue in identity_issues])
+        canonical_groups = repair_canonical_identities(canonical_groups)
+        identities_ok, identity_issues = validate_canonical_identities(canonical_groups)
+
+    # Synchronize payload with canonical object so every downstream consumer sees one truth.
+    by_name = {str(g.get("name", "")): g for g in payload.get("groups", [])}
+    for canonical_group in canonical_groups:
+        name = str(canonical_group.get("group_name", ""))
+        if name not in by_name:
+            continue
+        by_name[name]["interval_summary"] = canonical_group["interval_rows"]
+        by_name[name]["estimated_records"] = canonical_group["records"]
+        by_name[name]["unresolved_tail_count"] = canonical_group["unresolved_tail_count"]
+
+    payload["canonical_reconstruction"] = {
+        "groups": canonical_groups,
+        "accounting_identities_passed": identities_ok,
+        "interval_conservation_passed": interval_ok,
+        "issues": unique_list(interval_issues + identity_issues),
+        "interval_convention": "[t_i, t_{i+1}) for all but final interval, which is closed at right bound.",
+    }
+    return payload, unique_list(flags)
+
+
+def repair_interval_rows_to_deltas(rows: list[dict[str, Any]], tolerance: int) -> tuple[list[dict[str, Any]], list[str]]:
+    flags: list[str] = []
+    repaired: list[dict[str, Any]] = []
+    for row in rows:
+        new_row = dict(row)
+        at_risk_start = new_row.get("at_risk_start")
+        next_known = new_row.get("next_known_at_risk")
+        events = int(new_row.get("estimated_events", 0))
+        censors = int(new_row.get("estimated_censors", 0))
+        removals = events + censors
+
+        if isinstance(at_risk_start, int) and removals > at_risk_start:
+            overflow = removals - at_risk_start
+            censors = max(0, censors - overflow)
+            removals = events + censors
+            flags.append(f"{new_row.get('interval', '?')}: capped removals to at_risk_start")
+
+        if isinstance(at_risk_start, int) and isinstance(next_known, int):
+            target = max(0, at_risk_start - next_known)
+            if abs(removals - target) > tolerance:
+                censors = max(0, censors + (target - removals))
+                if censors < 0:
+                    censors = 0
+                removals = events + censors
+                if removals != target:
+                    # if still off, trim events conservatively
+                    events = max(0, min(events, target))
+                    censors = max(0, target - events)
+                flags.append(f"{new_row.get('interval', '?')}: aligned removals to risk-table delta")
+
+        new_row["estimated_events"] = max(0, events)
+        new_row["estimated_censors"] = max(0, censors)
+        repaired.append(new_row)
+    return repaired, unique_list(flags)
+
+
+def records_from_canonical_intervals(interval_rows: list[dict[str, Any]]) -> list[dict[str, float | int]]:
+    records: list[dict[str, float | int]] = []
+    for idx, row in enumerate(interval_rows):
+        start = float(row.get("interval_start", 0.0))
+        end = float(row.get("interval_end", start))
+        is_last = idx == len(interval_rows) - 1
+        event_time = min(end, end - 0.001) if not is_last else end
+        censor_time = min(end, end - 0.0005) if not is_last else end
+        for _ in range(int(row.get("estimated_events", 0))):
+            records.append({"time": max(start, event_time), "event": 1})
+        for _ in range(int(row.get("estimated_censors", 0))):
+            records.append({"time": max(start, censor_time), "event": 0})
+    return sorted(records, key=lambda record: (float(record["time"]), int(record["event"])))
+
+
+def validate_canonical_identities(canonical_groups: list[dict[str, Any]]) -> tuple[bool, list[str]]:
+    issues: list[str] = []
+    for group in canonical_groups:
+        name = str(group.get("group_name", "group"))
+        event_total = int(group.get("event_total", 0))
+        censor_total = int(group.get("censor_total", 0))
+        unresolved = int(group.get("unresolved_tail_count", 0))
+        initial_n = int(group.get("initial_n", 0))
+        final_known = group.get("final_known_risk")
+        last_known = group.get("last_known_risk")
+
+        if unresolved < 0:
+            issues.append(f"{name}: unresolved_tail_count negative")
+        if bool(group.get("terminal_risk_known", False)) and isinstance(final_known, int):
+            if initial_n - final_known != event_total + censor_total:
+                issues.append(f"{name}: known-terminal accounting mismatch")
+        elif isinstance(last_known, int):
+            if initial_n - last_known != event_total + censor_total + unresolved:
+                issues.append(f"{name}: unknown-terminal accounting mismatch")
+    return len(issues) == 0, issues
+
+
+def validate_canonical_interval_rows(
+    canonical_groups: list[dict[str, Any]],
+    tolerance: int,
+) -> tuple[bool, list[str]]:
+    issues: list[str] = []
+    for group in canonical_groups:
+        name = str(group.get("group_name", "group"))
+        for row in group.get("interval_rows", []):
+            events = int(row.get("estimated_events", 0))
+            censors = int(row.get("estimated_censors", 0))
+            removals = events + censors
+            at_risk_start = row.get("at_risk_start")
+            next_known = row.get("next_known_at_risk")
+            if isinstance(at_risk_start, int) and removals > at_risk_start:
+                issues.append(f"{name} {row.get('interval', '?')}: removals exceed at-risk")
+            if isinstance(at_risk_start, int) and isinstance(next_known, int):
+                target = max(0, at_risk_start - next_known)
+                if abs(removals - target) > tolerance:
+                    issues.append(f"{name} {row.get('interval', '?')}: removals mismatch risk-table delta")
+    return len(issues) == 0, issues
+
+
+def repair_canonical_identities(canonical_groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    repaired_groups: list[dict[str, Any]] = []
+    for group in canonical_groups:
+        repaired = dict(group)
+        initial_n = int(repaired.get("initial_n", 0))
+        events = int(repaired.get("event_total", 0))
+        censors = int(repaired.get("censor_total", 0))
+        if bool(repaired.get("terminal_risk_known", False)) and isinstance(repaired.get("final_known_risk"), int):
+            final_known = int(repaired["final_known_risk"])
+            target = max(0, initial_n - final_known)
+            scale = target - (events + censors)
+            repaired["censor_total"] = max(0, censors + scale)
+            repaired["unresolved_tail_count"] = 0
+        elif isinstance(repaired.get("last_known_risk"), int):
+            last_known = int(repaired["last_known_risk"])
+            target = max(0, initial_n - last_known)
+            overflow = max(0, (events + censors) - target)
+            if overflow > 0:
+                trim_from_censors = min(censors, overflow)
+                censors -= trim_from_censors
+                overflow -= trim_from_censors
+                if overflow > 0:
+                    events = max(0, events - overflow)
+                repaired["event_total"] = events
+                repaired["censor_total"] = censors
+            repaired["unresolved_tail_count"] = max(0, target - (events + censors))
+        repaired_groups.append(repaired)
+    return repaired_groups
+
+
+def last_known_risk_value(risk_counts: list[int | None]) -> int | None:
+    for value in reversed(risk_counts):
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def grade_extraction_quality(payload: dict[str, Any], suspicious_rules: list[str], repair_notes: list[str]) -> tuple[dict[str, Any], dict[str, Any]]:
+    group_quality: list[dict[str, Any]] = []
+    low_count = 0
+    very_low_trigger = False
+
+    for group in payload.get("groups", []):
+        reasons: list[str] = []
+        score = 0
+
+        risk_counts = group.get("risk_table_counts", [])
+        missing_terminal = bool(risk_counts) and risk_counts[-1] is None
+        if missing_terminal:
+            score += 1
+            reasons.append("terminal risk-table cell is missing")
+
+        if group.get("visible_censor_density") == "high":
+            score += 1
+            reasons.append("dense censor ticks reduce exact drop certainty")
+
+        if bool(group.get("confidence_band_present", False)):
+            score += 1
+            reasons.append("confidence band present; step-band separation risk")
+
+        unresolved_tail = int(group.get("unresolved_tail_count", 0) or 0)
+        if unresolved_tail > 0:
+            score += 1
+            reasons.append(f"unresolved tail subjects: {unresolved_tail}")
+        if unresolved_tail >= 5:
+            very_low_trigger = True
+
+        quality = "high"
+        if score >= 2:
+            quality = "medium"
+        if score >= 3:
+            quality = "low"
+            low_count += 1
+
+        group_quality.append(
+            {
+                "group_name": group.get("name", ""),
+                "quality_grade": quality,
+                "reasons": reasons,
+                "terminal_risk_known": bool(group.get("terminal_risk_known", False)),
+                "unresolved_tail_count": unresolved_tail,
+            }
+        )
+
+    figure_reasons: list[str] = []
+    if low_count > 0:
+        figure_reasons.append("one or more groups graded low quality")
+    if any("group-order contradiction" in item for item in suspicious_rules):
+        figure_reasons.append("group-order contradiction detected")
+        very_low_trigger = True
+    if len(repair_notes) >= 3:
+        figure_reasons.append("multiple repair rules triggered")
+    if not figure_reasons:
+        figure_reasons.append("no major reliability warnings")
+
+    figure_grade = "high"
+    if low_count > 0 or len(repair_notes) >= 2:
+        figure_grade = "medium"
+    if very_low_trigger or low_count >= 2 or len(repair_notes) >= 4:
+        figure_grade = "low"
+
+    quality_summary = {
+        "figure_quality_grade": figure_grade,
+        "figure_quality_reasons": figure_reasons,
+        "groups": group_quality,
+        "pairwise_recommendation": "suppress" if figure_grade == "low" and very_low_trigger else ("exploratory" if figure_grade == "low" else "show"),
+    }
+    payload["quality_summary"] = quality_summary
+    return payload, quality_summary
+
+
+def cap_confidence_for_quality(raw_confidence: float, quality_grade: str) -> tuple[float, str]:
+    bounded = max(0.0, min(1.0, raw_confidence))
+    normalized = quality_grade.lower().strip()
+    if normalized == "medium":
+        capped = min(bounded, 0.75)
+        if capped < bounded:
+            return capped, "Displayed confidence capped for MEDIUM quality (model-assisted confidence, rule-based quality)."
+        return capped, "Confidence reflects model output under MEDIUM quality constraints."
+    if normalized == "low":
+        capped = min(bounded, 0.55)
+        if capped < bounded:
+            return capped, "Displayed confidence capped for LOW quality (model-assisted confidence, rule-based quality)."
+        return capped, "Confidence reflects model output under LOW quality constraints."
+    return bounded, "Confidence reflects model output; quality grade is rule-based."
 
 
 def interval_index_for_time(time_value: float, boundaries: list[float]) -> int | None:
