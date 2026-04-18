@@ -21,26 +21,34 @@
       {% else %}
       <section class="result-card">
         <h2>Upload Analysis Summary</h2>
-        <p><strong>Extraction source:</strong> {{ extraction_source or "unavailable" }}</p>
         <p><strong>Filename:</strong> {{ file_metadata.filename }}</p>
         <p><strong>Overall x-axis max:</strong> {{ metadata_output.overall_x_axis_max if metadata_output else "N/A" }}</p>
-        <p class="small-note">Visible drops are directly seen on the plot. Overlap-inferred drops are conservatively inferred when one curve is partially hidden by another.</p>
-        <p class="small-note">Risk-table decreases represent removals from the risk set, which may include both events and censoring.</p>
+        <p><strong>Extraction source:</strong> {{ extraction_source or "unavailable" }}</p>
 
         {% if extraction_error %}
         <div class="message message-error"><strong>Extraction error:</strong> {{ extraction_error }}</div>
         {% endif %}
+      </section>
 
-        {% if auto_logrank and auto_logrank.warnings %}
-          {% for warning in auto_logrank.warnings %}
-          <span class="message message-warning" style="display:inline-block; margin-right:8px;">{{ warning }}</span>
-          {% endfor %}
+      <section class="result-card">
+        <h2>Uploaded Kaplan-Meier Figure</h2>
+        {% if image_url %}
+        <img src="{{ image_url }}" alt="Uploaded Kaplan-Meier figure preview" class="uploaded-image" />
+        {% else %}
+        <p>Image preview unavailable.</p>
         {% endif %}
+      </section>
 
-        {% if metadata_output and metadata_output.reconstruction_summary.warning_flags %}
-          {% for flag in metadata_output.reconstruction_summary.warning_flags %}
-          <span class="message message-warning" style="display:inline-block; margin-right:8px;">{{ flag }}</span>
-          {% endfor %}
+      <section class="result-card">
+        <h2>Compact Analysis Snapshot</h2>
+        <p><strong>Extraction source:</strong> {{ extraction_source or "unavailable" }}</p>
+        <p><strong>Number of groups:</strong> {{ auto_logrank.group_count if auto_logrank else "N/A" }}</p>
+        <p><strong>Figure quality:</strong> {{ auto_logrank.quality_summary.figure_quality_grade|upper if auto_logrank and auto_logrank.quality_summary else "N/A" }}</p>
+        <p><strong>Overall log-rank computed:</strong> {{ "Yes" if auto_logrank and auto_logrank.available else "No" }}</p>
+        {% if auto_logrank and auto_logrank.pairwise_message %}
+        <p><strong>Pairwise status:</strong> {{ auto_logrank.pairwise_message }}</p>
+        {% elif auto_logrank and auto_logrank.pairwise_interpretation and auto_logrank.analysis_type == "multigroup" %}
+        <p><strong>Pairwise status:</strong> {{ auto_logrank.pairwise_interpretation }}</p>
         {% endif %}
       </section>
 
@@ -83,6 +91,26 @@
         {% else %}
         <p>Quality summary unavailable.</p>
         {% endif %}
+
+        <details>
+          <summary>Show technical notes</summary>
+          <p class="small-note">Visible drops are directly seen on the plot. Overlap-inferred drops are conservatively inferred when one curve is partially hidden by another.</p>
+          <p class="small-note">Risk-table decreases represent removals from the risk set, which may include both events and censoring.</p>
+          {% if auto_logrank and auto_logrank.warnings %}
+          <ul>
+            {% for warning in auto_logrank.warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          {% if metadata_output and metadata_output.reconstruction_summary.warning_flags %}
+          <ul>
+            {% for flag in metadata_output.reconstruction_summary.warning_flags %}
+            <li>{{ flag }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </details>
       </section>
 
       <section class="result-card">
