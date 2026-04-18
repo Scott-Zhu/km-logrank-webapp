@@ -177,6 +177,7 @@ def run_logrank_analysis(
     include_pairwise: bool = True,
     alpha: float = 0.05,
     correction_method: str = "bonferroni",
+    pairwise_policy: str = "show",
 ) -> dict:
     from lifelines.statistics import logrank_test, multivariate_logrank_test
 
@@ -210,6 +211,7 @@ def run_logrank_analysis(
         "alpha": alpha,
         "correction_method": correction_method,
         "warnings": validation_warnings,
+        "pairwise_policy": pairwise_policy,
     }
 
     if len(unique_groups) == 2:
@@ -249,7 +251,7 @@ def run_logrank_analysis(
     )
 
     pairwise_rows: list[dict[str, str | float | bool]] = []
-    if include_pairwise:
+    if include_pairwise and pairwise_policy != "suppress":
         pairs = list(combinations(unique_groups, 2))
         raw_results: list[dict[str, str | float]] = []
 
@@ -292,6 +294,10 @@ def run_logrank_analysis(
             )
 
     result["pairwise_rows"] = pairwise_rows
+    if pairwise_policy == "exploratory" and pairwise_rows:
+        result["pairwise_message"] = "Pairwise comparisons are low-confidence exploratory due to extraction quality."
+    if pairwise_policy == "suppress":
+        result["pairwise_message"] = "Pairwise comparisons were suppressed because extraction quality is very low."
     return result
 
 
@@ -319,10 +325,23 @@ def _build_auto_logrank(payload: dict) -> dict:
     interval_rows = []
     record_previews = []
     groups_records = []
+    quality_summary = payload.get("quality_summary", {})
+    pairwise_policy = quality_summary.get("pairwise_recommendation", "show")
+    reliability_notes: list[str] = []
 
     for group in groups:
         group_name = group.get("name", "")
         records = group.get("estimated_records", [])
+        terminal_known = bool(group.get("terminal_risk_known", False))
+        unresolved_tail_count = int(group.get("unresolved_tail_count", 0) or 0)
+        if not terminal_known:
+            reliability_notes.append(
+                f"{group_name or 'Unnamed group'} has missing terminal risk-table cells; terminal count kept unknown."
+            )
+        if unresolved_tail_count > 0:
+            reliability_notes.append(
+                f"{group_name or 'Unnamed group'} retains {unresolved_tail_count} unresolved tail subjects."
+            )
 
         group_summaries.append(
             {
@@ -336,6 +355,8 @@ def _build_auto_logrank(payload: dict) -> dict:
                 "number_of_inferred_overlap_drops": len(group.get("overlap_inferred_drop_times", [])),
                 "number_of_reconstructed_events": sum(1 for r in records if int(r.get("event", 0)) == 1),
                 "number_of_reconstructed_censors": sum(1 for r in records if int(r.get("event", 0)) == 0),
+                "terminal_risk_known": terminal_known,
+                "unresolved_tail_count": unresolved_tail_count,
             }
         )
 
@@ -350,10 +371,16 @@ def _build_auto_logrank(payload: dict) -> dict:
         )
         groups_records.append({"group_name": group_name or "Unnamed group", "records": records})
 
-    analysis = run_logrank_analysis(groups_records=groups_records, include_pairwise=True)
+    analysis = run_logrank_analysis(
+        groups_records=groups_records,
+        include_pairwise=True,
+        pairwise_policy=pairwise_policy,
+    )
     analysis["group_summaries"] = group_summaries
     analysis["interval_rows"] = interval_rows
     analysis["record_previews"] = record_previews
+    analysis["quality_summary"] = quality_summary
+    analysis["reliability_notes"] = unique_ordered_strings(reliability_notes)
 
     if analysis.get("analysis_type") == "multigroup" and analysis.get("pairwise_rows"):
         if any(row.get("significant_after_adjustment") for row in analysis["pairwise_rows"]):
@@ -364,11 +391,31 @@ def _build_auto_logrank(payload: dict) -> dict:
             analysis["pairwise_interpretation"] = (
                 "No pairwise comparison remained significant after adjustment. "
                 "Treat pairwise findings as exploratory.")
+        if pairwise_policy == "exploratory":
+            analysis["pairwise_interpretation"] = (
+                "Pairwise rows are shown as low-confidence exploratory output due to extraction quality limitations."
+            )
+    elif analysis.get("analysis_type") == "multigroup" and pairwise_policy == "suppress":
+        analysis["pairwise_interpretation"] = analysis.get(
+            "pairwise_message",
+            "Pairwise comparisons were suppressed because extraction quality is very low."
+        )
 
     if analysis.get("analysis_type") == "multigroup" and analysis.get("p_value", 1.0) < analysis.get("alpha", 0.05):
         analysis["overall_plain_english"] = "At least one survival curve differs from the others."
 
     return analysis
+
+
+def unique_ordered_strings(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
 
 
 @app.route("/")

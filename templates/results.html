@@ -45,6 +45,47 @@
       </section>
 
       <section class="result-card">
+        <h2>Extraction Quality</h2>
+        {% if auto_logrank and auto_logrank.quality_summary %}
+        <p><strong>Figure quality:</strong> {{ auto_logrank.quality_summary.figure_quality_grade|upper }}</p>
+        {% if auto_logrank.quality_summary.figure_quality_reasons %}
+        <ul>
+          {% for reason in auto_logrank.quality_summary.figure_quality_reasons %}
+          <li>{{ reason }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if auto_logrank.quality_summary.groups %}
+        <table>
+          <thead>
+            <tr>
+              <th>Group</th>
+              <th>Quality</th>
+              <th>Terminal risk known</th>
+              <th>Unresolved tail</th>
+              <th>Reasons</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for gq in auto_logrank.quality_summary.groups %}
+            <tr>
+              <td>{{ gq.group_name }}</td>
+              <td>{{ gq.quality_grade|upper }}</td>
+              <td>{{ "Yes" if gq.terminal_risk_known else "No" }}</td>
+              <td>{{ gq.unresolved_tail_count }}</td>
+              <td>{{ gq.reasons|join("; ") if gq.reasons else "—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+        {% else %}
+        <p>Quality summary unavailable.</p>
+        {% endif %}
+      </section>
+
+      <section class="result-card">
         <h2>Extracted Group Summary</h2>
         {% if auto_logrank and auto_logrank.group_summaries %}
         <table>
@@ -58,6 +99,8 @@
               <th>Overlap-inferred drops</th>
               <th>Reconstructed events</th>
               <th>Reconstructed censors</th>
+              <th>Terminal risk known</th>
+              <th>Unresolved tail count</th>
             </tr>
           </thead>
           <tbody>
@@ -71,6 +114,8 @@
               <td>{{ row.number_of_inferred_overlap_drops }}</td>
               <td>{{ row.number_of_reconstructed_events }}</td>
               <td>{{ row.number_of_reconstructed_censors }}</td>
+              <td>{{ "Yes" if row.terminal_risk_known else "No" }}</td>
+              <td>{{ row.unresolved_tail_count }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -199,10 +244,21 @@
             </tbody>
           </table>
           <p class="small-note">{{ auto_logrank.pairwise_interpretation }}</p>
+          {% elif auto_logrank.pairwise_message %}
+          <p class="small-note">{{ auto_logrank.pairwise_message }}</p>
           {% endif %}
           {% endif %}
         {% else %}
         <p>Log-rank result unavailable. {{ auto_logrank.message if auto_logrank else "" }}</p>
+        {% endif %}
+
+        {% if auto_logrank and auto_logrank.reliability_notes %}
+        <h3>Reliability Notes</h3>
+        <ul>
+          {% for note in auto_logrank.reliability_notes %}
+          <li>{{ note }}</li>
+          {% endfor %}
+        </ul>
         {% endif %}
       </section>
 
