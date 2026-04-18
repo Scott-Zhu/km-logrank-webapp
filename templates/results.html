@@ -11,182 +11,170 @@
       <h1>Results</h1>
 
       {% if mode == "manual" %}
-      <!-- Manual results branch -->
-      <p>Manual survival-analysis mode output is shown below.</p>
-
       <section class="result-card">
         <h2>Manual Log-rank Test Output</h2>
         <p><strong>Group A records:</strong> {{ manual_analysis.group_a_count }}</p>
         <p><strong>Group B records:</strong> {{ manual_analysis.group_b_count }}</p>
-        <p><strong>Log-rank test statistic (chi-square):</strong> {{ "%.4f"|format(manual_analysis.chi_square) }}</p>
+        <p><strong>Chi-square:</strong> {{ "%.4f"|format(manual_analysis.chi_square) }}</p>
         <p><strong>p-value:</strong> {{ "%.6f"|format(manual_analysis.p_value) }}</p>
       </section>
       {% else %}
-      <!-- Upload metadata extraction branch -->
-      <p>
-        Your image upload is complete. You are in <strong>automatic approximation mode</strong>
-        (figure extraction), which is separate from manual survival-record mode.
-      </p>
-
       <section class="result-card">
-        <h2>Uploaded Image</h2>
+        <h2>Upload Analysis Summary</h2>
+        <p><strong>Extraction source:</strong> {{ extraction_source or "unavailable" }}</p>
         <p><strong>Filename:</strong> {{ file_metadata.filename }}</p>
-        <p><strong>Content type:</strong> {{ file_metadata.content_type }}</p>
-        <img class="uploaded-image" src="{{ image_url }}" alt="Uploaded Kaplan-Meier image" />
-      </section>
+        <p><strong>Overall x-axis max:</strong> {{ metadata_output.overall_x_axis_max if metadata_output else "N/A" }}</p>
+        <p class="small-note">Visible drops are directly seen on the plot. Overlap-inferred drops are conservatively inferred when one curve is partially hidden by another.</p>
+        <p class="small-note">Risk-table decreases represent removals from the risk set, which may include both events and censoring.</p>
 
-      <section class="result-card">
-        <h2>Approximate Log-rank from Reconstructed Curves</h2>
-        <div class="message message-warning">
-          <strong>Important:</strong>
-          This result is reconstructed approximately from plotted curves and optional
-          number-at-risk OCR text. It is <strong>not</strong> equivalent to a validated
-          patient-level survival analysis.
-        </div>
+        {% if extraction_error %}
+        <div class="message message-error"><strong>Extraction error:</strong> {{ extraction_error }}</div>
+        {% endif %}
 
-        {% if auto_logrank %}
-          <p><strong>Mode:</strong> Automatic approximation from uploaded figure</p>
-          <p class="small-note">{{ auto_logrank.warning }}</p>
-          {% if auto_logrank.confidence is defined %}
-          <p><strong>Extraction confidence:</strong> {{ "%.3f"|format(auto_logrank.confidence) }}</p>
-          {% endif %}
-
-          {% if auto_logrank.available %}
-          <h3>Reconstructed Data Summary</h3>
-          <ul>
-            <li><strong>{{ auto_logrank.group_a_name }}</strong>: {{ auto_logrank.group_a_count }} records (events: {{ auto_logrank.group_a_events }}, censored: {{ auto_logrank.group_a_censored }}, initial N assumption: {{ auto_logrank.group_a_initial_n }})</li>
-            <li><strong>{{ auto_logrank.group_b_name }}</strong>: {{ auto_logrank.group_b_count }} records (events: {{ auto_logrank.group_b_events }}, censored: {{ auto_logrank.group_b_censored }}, initial N assumption: {{ auto_logrank.group_b_initial_n }})</li>
-            <li><strong>Initial size source:</strong> {{ auto_logrank.initial_size_source }}</li>
-          </ul>
-
-          <h3>Approximate Log-rank Output</h3>
-          <p><strong>Log-rank test statistic (chi-square):</strong> {{ "%.4f"|format(auto_logrank.chi_square) }}</p>
-          <p><strong>p-value:</strong> {{ "%.6f"|format(auto_logrank.p_value) }}</p>
-          {% else %}
-          <p><strong>Approximate log-rank status:</strong> unavailable for this upload.</p>
-          <p class="small-note">{{ auto_logrank.message }}</p>
-          {% endif %}
-        {% else %}
-        <p>Approximate mode did not run because no curve extraction payload was available.</p>
+        {% if metadata_output and metadata_output.reconstruction_summary.warning_flags %}
+          {% for flag in metadata_output.reconstruction_summary.warning_flags %}
+          <span class="message message-warning" style="display:inline-block; margin-right:8px;">{{ flag }}</span>
+          {% endfor %}
         {% endif %}
       </section>
 
       <section class="result-card">
-        <h2>Curve Digitization Prototype</h2>
-        <p>
-          This is a heuristic extraction prototype. It estimates normalized
-          <code>(time, survival_probability)</code> points from visible curves.
-          It does <strong>not</strong> recover patient-level event times.
-        </p>
-
-        {% if metadata_output.curve_extraction.messages %}
-        <div class="message message-error">
-          <strong>Extraction message:</strong>
-          <ul>
-            {% for item in metadata_output.curve_extraction.messages %}
-            <li>{{ item }}</li>
+        <h2>Extracted Group Summary</h2>
+        {% if auto_logrank and auto_logrank.group_summaries %}
+        <table>
+          <thead>
+            <tr>
+              <th>Group</th>
+              <th>Initial N</th>
+              <th>Last visible curve time</th>
+              <th>Last visible survival</th>
+              <th>Visible drops</th>
+              <th>Overlap-inferred drops</th>
+              <th>Reconstructed events</th>
+              <th>Reconstructed censors</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in auto_logrank.group_summaries %}
+            <tr>
+              <td>{{ row.group_name }}</td>
+              <td>{{ row.initial_n }}</td>
+              <td>{{ row.last_visible_curve_time }}</td>
+              <td>{{ row.last_visible_survival }}</td>
+              <td>{{ row.number_of_visible_drops }}</td>
+              <td>{{ row.number_of_inferred_overlap_drops }}</td>
+              <td>{{ row.number_of_reconstructed_events }}</td>
+              <td>{{ row.number_of_reconstructed_censors }}</td>
+            </tr>
             {% endfor %}
-          </ul>
-        </div>
+          </tbody>
+        </table>
+        {% else %}
+        <p>Group summary unavailable.</p>
         {% endif %}
+      </section>
 
-        <p><strong>Status:</strong> {{ metadata_output.curve_extraction.status }}</p>
-        {% if metadata_output.curve_extraction.risk_table_row_estimate %}
-        <p><strong>Estimated risk-table rows:</strong> {{ metadata_output.curve_extraction.risk_table_row_estimate }}</p>
+      <section class="result-card">
+        <h2>Interval Reconstruction Summary</h2>
+        {% if auto_logrank and auto_logrank.interval_rows %}
+        <table>
+          <thead>
+            <tr>
+              <th>Interval</th>
+              <th>Group</th>
+              <th>At-risk start</th>
+              <th>Visible drop count</th>
+              <th>Estimated events</th>
+              <th>Estimated censors</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in auto_logrank.interval_rows %}
+            <tr>
+              <td>{{ row.interval }}</td>
+              <td>{{ row.group }}</td>
+              <td>{{ row.at_risk_start }}</td>
+              <td>{{ row.visible_drop_count }}</td>
+              <td>{{ row.estimated_events }}</td>
+              <td>{{ row.estimated_censors }}</td>
+              <td>{{ row.notes }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p>Interval summary unavailable.</p>
         {% endif %}
+      </section>
 
-        <h3>Assumptions</h3>
+      <section class="result-card">
+        <h2>Final Log-rank Result</h2>
+        {% if auto_logrank and auto_logrank.available %}
+        <table>
+          <thead>
+            <tr>
+              <th>Group A</th>
+              <th>Group B</th>
+              <th>Chi-square</th>
+              <th>p-value</th>
+              <th>Interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{{ auto_logrank.group_a_name }}</td>
+              <td>{{ auto_logrank.group_b_name }}</td>
+              <td>{{ "%.4f"|format(auto_logrank.chi_square) }}</td>
+              <td>{{ "%.6f"|format(auto_logrank.p_value) }}</td>
+              <td>{{ auto_logrank.interpretation }}</td>
+            </tr>
+          </tbody>
+        </table>
+        {% else %}
+        <p>Log-rank result unavailable. {{ auto_logrank.message if auto_logrank else "" }}</p>
+        {% endif %}
+      </section>
+
+      {% if auto_logrank and auto_logrank.available %}
+      <section class="result-card">
+        <h2>Record Preview (first 10 rows each group)</h2>
+        <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
+        <pre class="json-output">{{ auto_logrank.group_a_records_preview | tojson(indent=2) }}</pre>
+        <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
+        <pre class="json-output">{{ auto_logrank.group_b_records_preview | tojson(indent=2) }}</pre>
+
+        <details>
+          <summary>Show reconstructed records</summary>
+          <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
+          <pre class="json-output">{{ auto_logrank.group_a_records | tojson(indent=2) }}</pre>
+          <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
+          <pre class="json-output">{{ auto_logrank.group_b_records | tojson(indent=2) }}</pre>
+        </details>
+      </section>
+      {% endif %}
+
+      {% if metadata_output %}
+      <section class="result-card">
+        <h2>Warnings & Confidence</h2>
+        <p><strong>Confidence:</strong> {{ "%.3f"|format(metadata_output.confidence) }}</p>
+        {% if metadata_output.warnings %}
         <ul>
-          {% for item in metadata_output.curve_extraction.assumptions %}
+          {% for item in metadata_output.warnings %}
           <li>{{ item }}</li>
           {% endfor %}
         </ul>
-
-        <h3>Limitations</h3>
-        <ul>
-          {% for item in metadata_output.curve_extraction.limitations %}
-          <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-
-        {% if metadata_output.curve_extraction.curves %}
-        <h3>Extracted Curves (Normalized Plot)</h3>
-        <svg id="curve-svg" viewBox="0 0 620 380" role="img" aria-label="Extracted Kaplan-Meier curves"></svg>
-        <p class="small-note">X axis: normalized time [0,1], Y axis: normalized survival probability [0,1]</p>
-        {% else %}
-        <p>No curve point data was extracted for this image.</p>
         {% endif %}
 
-        <h3>Structured JSON</h3>
-        <pre class="json-output">{{ metadata_json }}</pre>
+        <details>
+          <summary>Show raw extracted JSON</summary>
+          <pre class="json-output">{{ metadata_json }}</pre>
+        </details>
       </section>
-
-      <section class="result-card">
-        <h2>Metadata Extraction (OCR)</h2>
-        <p><strong>Module:</strong> metadata extraction</p>
-        <p>This OCR block is approximate and intended for figure-level labels only.</p>
-
-        {% if metadata_output.messages %}
-        <div class="message message-error">
-          <strong>Helpful message:</strong>
-          <ul>
-            {% for item in metadata_output.messages %}
-            <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-        {% endif %}
-      </section>
+      {% endif %}
       {% endif %}
 
       <p><a href="{{ url_for('home') }}">Back to home</a></p>
     </main>
-
-    {% if mode == "upload" and metadata_output.curve_extraction.curves %}
-    <script>
-      (() => {
-        const payload = {{ metadata_data | tojson }};
-        const svg = document.getElementById("curve-svg");
-        if (!svg || !payload.curve_extraction || !payload.curve_extraction.curves) {
-          return;
-        }
-
-        const width = 620;
-        const height = 380;
-        const margin = { left: 56, right: 16, top: 20, bottom: 42 };
-        const innerWidth = width - margin.left - margin.right;
-        const innerHeight = height - margin.top - margin.bottom;
-
-        const toX = (value) => margin.left + (value * innerWidth);
-        const toY = (value) => margin.top + ((1 - value) * innerHeight);
-
-        const axis = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        axis.setAttribute("d", `M ${margin.left} ${margin.top} V ${height - margin.bottom} H ${width - margin.right}`);
-        axis.setAttribute("stroke", "#374151");
-        axis.setAttribute("fill", "none");
-        axis.setAttribute("stroke-width", "1.5");
-        svg.appendChild(axis);
-
-        payload.curve_extraction.curves.forEach((curve) => {
-          if (!curve.points || curve.points.length === 0) {
-            return;
-          }
-
-          const rgb = curve.stroke_color_rgb || [55, 65, 81];
-          const stroke = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-          const path = curve.points
-            .map((point, index) => `${index === 0 ? "M" : "L"} ${toX(point.time)} ${toY(point.survival_probability)}`)
-            .join(" ");
-
-          const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          line.setAttribute("d", path);
-          line.setAttribute("stroke", stroke);
-          line.setAttribute("fill", "none");
-          line.setAttribute("stroke-width", "2");
-          svg.appendChild(line);
-        });
-      })();
-    </script>
-    {% endif %}
   </body>
 </html>
