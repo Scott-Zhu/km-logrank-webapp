@@ -11,92 +11,152 @@
       <h1>Results</h1>
 
       {% if mode == "manual" %}
-      <p>Manual survival-analysis mode output is shown below.</p>
-
       <section class="result-card">
         <h2>Manual Log-rank Test Output</h2>
         <p><strong>Group A records:</strong> {{ manual_analysis.group_a_count }}</p>
         <p><strong>Group B records:</strong> {{ manual_analysis.group_b_count }}</p>
-        <p><strong>Log-rank test statistic (chi-square):</strong> {{ "%.4f"|format(manual_analysis.chi_square) }}</p>
+        <p><strong>Chi-square:</strong> {{ "%.4f"|format(manual_analysis.chi_square) }}</p>
         <p><strong>p-value:</strong> {{ "%.6f"|format(manual_analysis.p_value) }}</p>
       </section>
       {% else %}
-      <p>Upload workflow uses an <strong>LLM vision API</strong> and conservative deterministic reconstruction.</p>
-
       <section class="result-card">
-        <h2>Uploaded Image</h2>
+        <h2>Upload Analysis Summary</h2>
+        <p><strong>Extraction source:</strong> {{ extraction_source or "unavailable" }}</p>
         <p><strong>Filename:</strong> {{ file_metadata.filename }}</p>
-        <p><strong>Content type:</strong> {{ file_metadata.content_type }}</p>
-        <img class="uploaded-image" src="{{ image_url }}" alt="Uploaded Kaplan-Meier image" />
-      </section>
+        <p><strong>Overall x-axis max:</strong> {{ metadata_output.overall_x_axis_max if metadata_output else "N/A" }}</p>
+        <p class="small-note">Visible drops are directly seen on the plot. Overlap-inferred drops are conservatively inferred when one curve is partially hidden by another.</p>
+        <p class="small-note">Risk-table decreases represent removals from the risk set, which may include both events and censoring.</p>
 
-      <section class="result-card">
-        <h2>Extraction Status</h2>
-        {% if extraction_source %}
-        <p><strong>Extraction source:</strong> {{ extraction_source }}</p>
-        {% endif %}
-        {% if extraction_source == "cached LLM response" %}
-        <div class="message message-warning">Cached extraction was used for this image hash. No API call was made.</div>
-        {% endif %}
         {% if extraction_error %}
         <div class="message message-error"><strong>Extraction error:</strong> {{ extraction_error }}</div>
         {% endif %}
 
-        <div class="message message-warning">
-          <strong>Disclaimer:</strong>
-          Extraction is approximate from a plotted KM curve image, not source patient-level data.
-        </div>
-      </section>
-
-      {% if metadata_output %}
-      <section class="result-card">
-        <h2>Conservative KM Geometry Summary</h2>
-        <p><strong>Overall x-axis max:</strong> {{ metadata_output.overall_x_axis_max }}</p>
-        <ul>
-          {% for group in metadata_output.groups %}
-          <li>
-            <strong>{{ group.name }}</strong>: last visible curve time = {{ group.last_visible_curve_time }},
-            last visible survival = {{ group.last_visible_curve_survival }}
-          </li>
+        {% if metadata_output and metadata_output.reconstruction_summary.warning_flags %}
+          {% for flag in metadata_output.reconstruction_summary.warning_flags %}
+          <span class="message message-warning" style="display:inline-block; margin-right:8px;">{{ flag }}</span>
           {% endfor %}
-        </ul>
-        <p><strong>Suspicious rules triggered:</strong> {{ metadata_output.reconstruction_summary.suspicious_rules_triggered|length }}</p>
-        <p><strong>Python repairs applied:</strong> {{ metadata_output.reconstruction_summary.python_repairs_applied|length }}</p>
-        <p><strong>LLM review pass used:</strong> {{ metadata_output.reconstruction_summary.llm_review_used }}</p>
-        <p><strong>Conservative truncation used:</strong> {{ metadata_output.reconstruction_summary.conservative_truncation_used }}</p>
-      </section>
-
-      <section class="result-card">
-        <h2>Approximate Log-rank from Conservative Reconstruction</h2>
-        {% if auto_logrank and auto_logrank.available %}
-          <p><strong>Group A:</strong> {{ auto_logrank.group_a_name }} ({{ auto_logrank.group_a_count }} records)</p>
-          <p><strong>Group B:</strong> {{ auto_logrank.group_b_name }} ({{ auto_logrank.group_b_count }} records)</p>
-          <p><strong>Group A last visible curve time:</strong> {{ auto_logrank.group_a_last_visible_curve_time }}</p>
-          <p><strong>Group B last visible curve time:</strong> {{ auto_logrank.group_b_last_visible_curve_time }}</p>
-          <p><strong>Log-rank chi-square:</strong> {{ "%.4f"|format(auto_logrank.chi_square) }}</p>
-          <p><strong>p-value:</strong> {{ "%.6f"|format(auto_logrank.p_value) }}</p>
-
-          <h3>Interval-level Reconstruction Summary</h3>
-          <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
-          <pre class="json-output">{{ auto_logrank.group_a_interval_summary | tojson(indent=2) }}</pre>
-          <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
-          <pre class="json-output">{{ auto_logrank.group_b_interval_summary | tojson(indent=2) }}</pre>
-
-          <h3>Reconstructed Group Records</h3>
-          <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
-          <pre class="json-output">{{ auto_logrank.group_a_records | tojson(indent=2) }}</pre>
-          <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
-          <pre class="json-output">{{ auto_logrank.group_b_records | tojson(indent=2) }}</pre>
-        {% elif auto_logrank %}
-          <p>Automatic log-rank was not computed.</p>
-          <p class="small-note">{{ auto_logrank.message }}</p>
-        {% else %}
-          <p>Automatic log-rank output is unavailable.</p>
         {% endif %}
       </section>
 
       <section class="result-card">
-        <h2>Confidence and Warnings</h2>
+        <h2>Extracted Group Summary</h2>
+        {% if auto_logrank and auto_logrank.group_summaries %}
+        <table>
+          <thead>
+            <tr>
+              <th>Group</th>
+              <th>Initial N</th>
+              <th>Last visible curve time</th>
+              <th>Last visible survival</th>
+              <th>Visible drops</th>
+              <th>Overlap-inferred drops</th>
+              <th>Reconstructed events</th>
+              <th>Reconstructed censors</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in auto_logrank.group_summaries %}
+            <tr>
+              <td>{{ row.group_name }}</td>
+              <td>{{ row.initial_n }}</td>
+              <td>{{ row.last_visible_curve_time }}</td>
+              <td>{{ row.last_visible_survival }}</td>
+              <td>{{ row.number_of_visible_drops }}</td>
+              <td>{{ row.number_of_inferred_overlap_drops }}</td>
+              <td>{{ row.number_of_reconstructed_events }}</td>
+              <td>{{ row.number_of_reconstructed_censors }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p>Group summary unavailable.</p>
+        {% endif %}
+      </section>
+
+      <section class="result-card">
+        <h2>Interval Reconstruction Summary</h2>
+        {% if auto_logrank and auto_logrank.interval_rows %}
+        <table>
+          <thead>
+            <tr>
+              <th>Interval</th>
+              <th>Group</th>
+              <th>At-risk start</th>
+              <th>Visible drop count</th>
+              <th>Estimated events</th>
+              <th>Estimated censors</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in auto_logrank.interval_rows %}
+            <tr>
+              <td>{{ row.interval }}</td>
+              <td>{{ row.group }}</td>
+              <td>{{ row.at_risk_start }}</td>
+              <td>{{ row.visible_drop_count }}</td>
+              <td>{{ row.estimated_events }}</td>
+              <td>{{ row.estimated_censors }}</td>
+              <td>{{ row.notes }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p>Interval summary unavailable.</p>
+        {% endif %}
+      </section>
+
+      <section class="result-card">
+        <h2>Final Log-rank Result</h2>
+        {% if auto_logrank and auto_logrank.available %}
+        <table>
+          <thead>
+            <tr>
+              <th>Group A</th>
+              <th>Group B</th>
+              <th>Chi-square</th>
+              <th>p-value</th>
+              <th>Interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{{ auto_logrank.group_a_name }}</td>
+              <td>{{ auto_logrank.group_b_name }}</td>
+              <td>{{ "%.4f"|format(auto_logrank.chi_square) }}</td>
+              <td>{{ "%.6f"|format(auto_logrank.p_value) }}</td>
+              <td>{{ auto_logrank.interpretation }}</td>
+            </tr>
+          </tbody>
+        </table>
+        {% else %}
+        <p>Log-rank result unavailable. {{ auto_logrank.message if auto_logrank else "" }}</p>
+        {% endif %}
+      </section>
+
+      {% if auto_logrank and auto_logrank.available %}
+      <section class="result-card">
+        <h2>Record Preview (first 10 rows each group)</h2>
+        <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
+        <pre class="json-output">{{ auto_logrank.group_a_records_preview | tojson(indent=2) }}</pre>
+        <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
+        <pre class="json-output">{{ auto_logrank.group_b_records_preview | tojson(indent=2) }}</pre>
+
+        <details>
+          <summary>Show reconstructed records</summary>
+          <p><strong>{{ auto_logrank.group_a_name }}</strong></p>
+          <pre class="json-output">{{ auto_logrank.group_a_records | tojson(indent=2) }}</pre>
+          <p><strong>{{ auto_logrank.group_b_name }}</strong></p>
+          <pre class="json-output">{{ auto_logrank.group_b_records | tojson(indent=2) }}</pre>
+        </details>
+      </section>
+      {% endif %}
+
+      {% if metadata_output %}
+      <section class="result-card">
+        <h2>Warnings & Confidence</h2>
         <p><strong>Confidence:</strong> {{ "%.3f"|format(metadata_output.confidence) }}</p>
         {% if metadata_output.warnings %}
         <ul>
@@ -104,14 +164,12 @@
           <li>{{ item }}</li>
           {% endfor %}
         </ul>
-        {% else %}
-        <p>No warnings returned by extractor.</p>
         {% endif %}
-      </section>
 
-      <section class="result-card">
-        <h2>Extracted Structured JSON</h2>
-        <pre class="json-output">{{ metadata_json }}</pre>
+        <details>
+          <summary>Show raw extracted JSON</summary>
+          <pre class="json-output">{{ metadata_json }}</pre>
+        </details>
       </section>
       {% endif %}
       {% endif %}

@@ -160,6 +160,25 @@ def _build_auto_logrank(payload: dict) -> dict:
         return {"available": False, "message": "One or both groups have no reconstructed estimated records."}
 
     output = compute_logrank_test(records_a, records_b)
+    group_summaries = []
+    for group in groups:
+        records = group.get("estimated_records", [])
+        group_summaries.append(
+            {
+                "group_name": group.get("name", ""),
+                "initial_n": group.get("initial_n"),
+                "last_visible_curve_time": group.get("last_visible_curve_time"),
+                "last_visible_survival": group.get("last_visible_curve_survival"),
+                "number_of_visible_drops": len([p for p in group.get("step_points_visible", []) if p.get("support_type") == "visible"]),
+                "number_of_inferred_overlap_drops": len(group.get("overlap_inferred_drop_times", [])),
+                "number_of_reconstructed_events": sum(1 for r in records if int(r.get("event", 0)) == 1),
+                "number_of_reconstructed_censors": sum(1 for r in records if int(r.get("event", 0)) == 0),
+            }
+        )
+
+    interval_rows = group_a.get("interval_summary", []) + group_b.get("interval_summary", [])
+    interpretation = "Groups differ (p < 0.05)." if output["p_value"] < 0.05 else "No clear difference (p >= 0.05)."
+
     return {
         "available": True,
         "group_a_name": group_a.get("name", "Group A"),
@@ -168,12 +187,15 @@ def _build_auto_logrank(payload: dict) -> dict:
         "group_b_count": len(records_b),
         "group_a_records": records_a,
         "group_b_records": records_b,
+        "group_a_records_preview": records_a[:10],
+        "group_b_records_preview": records_b[:10],
+        "group_summaries": group_summaries,
+        "interval_rows": interval_rows,
         "group_a_last_visible_curve_time": group_a.get("last_visible_curve_time"),
         "group_b_last_visible_curve_time": group_b.get("last_visible_curve_time"),
-        "group_a_interval_summary": group_a.get("interval_summary", []),
-        "group_b_interval_summary": group_b.get("interval_summary", []),
         "chi_square": output["chi_square"],
         "p_value": output["p_value"],
+        "interpretation": interpretation,
     }
 
 

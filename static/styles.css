@@ -145,3 +145,24 @@ a {
   font-size: 0.9rem;
   color: #4b5563;
 }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 0.92rem;
+}
+th, td {
+  border: 1px solid #d1d5db;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: #eef2ff;
+}
+summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-top: 8px;
+}
