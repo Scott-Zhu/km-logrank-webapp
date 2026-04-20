@@ -60,13 +60,37 @@ PUBLIC_DEMO_REGISTRY = [
     {
         "slug": "indirect-comparison",
         "route": "/indirect-comparison",
-        "title": "Indirect comparison example",
-        "description": "Anchored indirect comparison using two published NSCLC trials with shared comparator platinum-based chemotherapy.",
+        "title": "Indirect comparison across related papers",
+        "description": "Cached example of cross-paper treatment comparison with a shared comparator (Pembrolizumab vs Atezolizumab).",
         "type": "indirect",
         "payload_path": None,
         "image_path": None,
     },
 ]
+
+INDIRECT_DEMO_PAPER_1_DEFAULTS = {
+    "title": "Updated Analysis of KEYNOTE-024: Pembrolizumab Versus Platinum-Based Chemotherapy for Advanced Non-Small-Cell Lung Cancer With PD-L1 Tumor Proportion Score of 50% or Greater",
+    "authors": "Martin Reck et al.",
+    "year": "2019",
+    "journal": "Journal of Clinical Oncology",
+    "comparison_label": "Pembrolizumab vs Platinum-based chemotherapy",
+    "endpoint_name": "Overall Survival",
+    "hr": 0.63,
+    "ci_lower": 0.47,
+    "ci_upper": 0.86,
+}
+
+INDIRECT_DEMO_PAPER_2_DEFAULTS = {
+    "title": "FP13.03 IMpower110: Updated OS Analysis of Atezolizumab vs Platinum-Based Chemotherapy as First-Line Treatment in PD-L1-Selected NSCLC",
+    "authors": "R. Herbst et al.",
+    "year": "2021",
+    "journal": "Journal of Thoracic Oncology (Supplement)",
+    "comparison_label": "Atezolizumab vs Platinum-based chemotherapy",
+    "endpoint_name": "Overall Survival",
+    "hr": 0.59,
+    "ci_lower": 0.40,
+    "ci_upper": 0.89,
+}
 
 
 def is_allowed_file(filename: str) -> bool:
@@ -782,33 +806,33 @@ def indirect_comparison():
     cached_hashes = _list_cached_hashes()
 
     paper_1 = {
-        "title": "Paper 1 title placeholder",
-        "authors": "First author et al.",
-        "year": "YYYY",
-        "journal": "Journal name",
-        "comparison_label": "A vs B",
-        "endpoint_name": "Overall Survival",
+        "title": INDIRECT_DEMO_PAPER_1_DEFAULTS["title"],
+        "authors": INDIRECT_DEMO_PAPER_1_DEFAULTS["authors"],
+        "year": INDIRECT_DEMO_PAPER_1_DEFAULTS["year"],
+        "journal": INDIRECT_DEMO_PAPER_1_DEFAULTS["journal"],
+        "comparison_label": INDIRECT_DEMO_PAPER_1_DEFAULTS["comparison_label"],
+        "endpoint_name": INDIRECT_DEMO_PAPER_1_DEFAULTS["endpoint_name"],
         "figure_status": "No cached KM figure selected for this direct comparison.",
         "image_url": None,
-        "hr": 0.82,
-        "ci_lower": 0.68,
-        "ci_upper": 0.99,
+        "hr": INDIRECT_DEMO_PAPER_1_DEFAULTS["hr"],
+        "ci_lower": INDIRECT_DEMO_PAPER_1_DEFAULTS["ci_lower"],
+        "ci_upper": INDIRECT_DEMO_PAPER_1_DEFAULTS["ci_upper"],
         "source_mode": "reported",
         "cached_hash": latest_upload_hash or "",
         "provenance_note": "Article-reported effect (HR/95% CI entered manually).",
     }
     paper_2 = {
-        "title": "Paper 2 title placeholder",
-        "authors": "First author et al.",
-        "year": "YYYY",
-        "journal": "Journal name",
-        "comparison_label": "C vs B",
-        "endpoint_name": "Overall Survival",
+        "title": INDIRECT_DEMO_PAPER_2_DEFAULTS["title"],
+        "authors": INDIRECT_DEMO_PAPER_2_DEFAULTS["authors"],
+        "year": INDIRECT_DEMO_PAPER_2_DEFAULTS["year"],
+        "journal": INDIRECT_DEMO_PAPER_2_DEFAULTS["journal"],
+        "comparison_label": INDIRECT_DEMO_PAPER_2_DEFAULTS["comparison_label"],
+        "endpoint_name": INDIRECT_DEMO_PAPER_2_DEFAULTS["endpoint_name"],
         "figure_status": "No cached KM figure selected for this direct comparison.",
         "image_url": None,
-        "hr": 1.10,
-        "ci_lower": 0.92,
-        "ci_upper": 1.31,
+        "hr": INDIRECT_DEMO_PAPER_2_DEFAULTS["hr"],
+        "ci_lower": INDIRECT_DEMO_PAPER_2_DEFAULTS["ci_lower"],
+        "ci_upper": INDIRECT_DEMO_PAPER_2_DEFAULTS["ci_upper"],
         "source_mode": "reported",
         "cached_hash": "",
         "provenance_note": "Article-reported effect (HR/95% CI entered manually).",
