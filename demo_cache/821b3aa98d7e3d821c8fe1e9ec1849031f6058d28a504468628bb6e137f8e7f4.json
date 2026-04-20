@@ -1,0 +1,2164 @@
+{
+  "title": "Kaplan-Meier Survival Curve",
+  "x_axis_label": "Time (months)",
+  "y_axis_label": "Survival rate (%)",
+  "time_unit": "months",
+  "overall_x_axis_max": 70.0,
+  "risk_table_times": [
+    0,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70
+  ],
+  "number_of_groups": 2,
+  "groups": [
+    {
+      "name": "Group 1 (low risk)",
+      "initial_n": 112,
+      "risk_table_counts": [
+        112,
+        95,
+        90,
+        85,
+        79,
+        56,
+        53,
+        50
+      ],
+      "terminal_risk_known": true,
+      "visible_censor_density": "low",
+      "confidence_band_present": false,
+      "extraction_quality_flags": [],
+      "order_anchor_points": [
+        {
+          "x_time": 0,
+          "survival_probability": 1.0
+        },
+        {
+          "x_time": 10,
+          "survival_probability": 0.95
+        },
+        {
+          "x_time": 20,
+          "survival_probability": 0.91
+        },
+        {
+          "x_time": 30,
+          "survival_probability": 0.87
+        },
+        {
+          "x_time": 40,
+          "survival_probability": 0.8
+        },
+        {
+          "x_time": 50,
+          "survival_probability": 0.66
+        },
+        {
+          "x_time": 60,
+          "survival_probability": 0.61
+        },
+        {
+          "x_time": 70,
+          "survival_probability": 0.57
+        }
+      ],
+      "step_points_visible": [
+        {
+          "time": 0.0,
+          "survival_probability": 1.0,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 10.0,
+          "survival_probability": 0.95,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 20.0,
+          "survival_probability": 0.91,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 30.0,
+          "survival_probability": 0.87,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 40.0,
+          "survival_probability": 0.8,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 50.0,
+          "survival_probability": 0.66,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 60.0,
+          "survival_probability": 0.61,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 70.0,
+          "survival_probability": 0.57,
+          "support_type": "visible",
+          "confidence": 1.0
+        }
+      ],
+      "visible_drop_times": [
+        10.0,
+        20.0,
+        30.0,
+        40.0,
+        50.0,
+        60.0,
+        70.0
+      ],
+      "visible_horizontal_segments": [
+        {
+          "start_time": 0,
+          "end_time": 10,
+          "survival_probability": 1.0,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 10,
+          "end_time": 20,
+          "survival_probability": 0.95,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 20,
+          "end_time": 30,
+          "survival_probability": 0.91,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 30,
+          "end_time": 40,
+          "survival_probability": 0.87,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 40,
+          "end_time": 50,
+          "survival_probability": 0.8,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 50,
+          "end_time": 60,
+          "survival_probability": 0.66,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 60,
+          "end_time": 70,
+          "survival_probability": 0.61,
+          "support_type": "visible",
+          "confidence": 1.0
+        }
+      ],
+      "visible_censor_times": [],
+      "last_visible_curve_time": 70.0,
+      "last_visible_curve_survival": 0.57,
+      "curve_confidence": 1.0,
+      "extraction_warnings": [],
+      "interval_event_count_estimates": [],
+      "overlap_inferred_drop_times": [],
+      "estimated_records": [
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.9995,
+          "event": 0
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.9995,
+          "event": 0
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.9995,
+          "event": 0
+        },
+        {
+          "time": 49.9995,
+          "event": 0
+        },
+        {
+          "time": 49.9995,
+          "event": 0
+        },
+        {
+          "time": 49.9995,
+          "event": 0
+        },
+        {
+          "time": 49.9995,
+          "event": 0
+        },
+        {
+          "time": 49.9995,
+          "event": 0
+        },
+        {
+          "time": 49.9995,
+          "event": 0
+        },
+        {
+          "time": 59.999,
+          "event": 1
+        },
+        {
+          "time": 59.999,
+          "event": 1
+        },
+        {
+          "time": 59.999,
+          "event": 1
+        },
+        {
+          "time": 70.0,
+          "event": 1
+        },
+        {
+          "time": 70.0,
+          "event": 1
+        },
+        {
+          "time": 70.0,
+          "event": 1
+        }
+      ],
+      "interval_summary": [
+        {
+          "interval": "0.0-10.0",
+          "interval_start": 0.0,
+          "interval_end": 10.0,
+          "group": "Group 1 (low risk)",
+          "at_risk_start": 112,
+          "next_known_at_risk": 95,
+          "visible_drop_count": 1,
+          "estimated_events": 6,
+          "estimated_censors": 11,
+          "notes": "conservative censor allocation; bounded by next known risk-table count"
+        },
+        {
+          "interval": "10.0-20.0",
+          "interval_start": 10.0,
+          "interval_end": 20.0,
+          "group": "Group 1 (low risk)",
+          "at_risk_start": 95,
+          "next_known_at_risk": 90,
+          "visible_drop_count": 2,
+          "estimated_events": 4,
+          "estimated_censors": 1,
+          "notes": "conservative censor allocation; bounded by next known risk-table count"
+        },
+        {
+          "interval": "20.0-30.0",
+          "interval_start": 20.0,
+          "interval_end": 30.0,
+          "group": "Group 1 (low risk)",
+          "at_risk_start": 90,
+          "next_known_at_risk": 85,
+          "visible_drop_count": 2,
+          "estimated_events": 4,
+          "estimated_censors": 1,
+          "notes": "conservative censor allocation; bounded by next known risk-table count"
+        },
+        {
+          "interval": "30.0-40.0",
+          "interval_start": 30.0,
+          "interval_end": 40.0,
+          "group": "Group 1 (low risk)",
+          "at_risk_start": 85,
+          "next_known_at_risk": 79,
+          "visible_drop_count": 2,
+          "estimated_events": 6,
+          "estimated_censors": 0,
+          "notes": "bounded by next known risk-table count"
+        },
+        {
+          "interval": "40.0-50.0",
+          "interval_start": 40.0,
+          "interval_end": 50.0,
+          "group": "Group 1 (low risk)",
+          "at_risk_start": 79,
+          "next_known_at_risk": 56,
+          "visible_drop_count": 2,
+          "estimated_events": 16,
+          "estimated_censors": 7,
+          "notes": "conservative censor allocation; bounded by next known risk-table count"
+        },
+        {
+          "interval": "50.0-60.0",
+          "interval_start": 50.0,
+          "interval_end": 60.0,
+          "group": "Group 1 (low risk)",
+          "at_risk_start": 56,
+          "next_known_at_risk": 53,
+          "visible_drop_count": 2,
+          "estimated_events": 3,
+          "estimated_censors": 0,
+          "notes": "bounded by next known risk-table count"
+        },
+        {
+          "interval": "60.0-70.0",
+          "interval_start": 60.0,
+          "interval_end": 70.0,
+          "group": "Group 1 (low risk)",
+          "at_risk_start": 53,
+          "next_known_at_risk": 50,
+          "visible_drop_count": 2,
+          "estimated_events": 3,
+          "estimated_censors": 0,
+          "notes": "bounded by next known risk-table count"
+        }
+      ],
+      "unresolved_tail_count": 0
+    },
+    {
+      "name": "Group 2 (high risk)",
+      "initial_n": 103,
+      "risk_table_counts": [
+        103,
+        80,
+        63,
+        50,
+        23,
+        10,
+        7,
+        6
+      ],
+      "terminal_risk_known": true,
+      "visible_censor_density": "low",
+      "confidence_band_present": false,
+      "extraction_quality_flags": [],
+      "order_anchor_points": [
+        {
+          "x_time": 0,
+          "survival_probability": 1.0
+        },
+        {
+          "x_time": 10,
+          "survival_probability": 0.87
+        },
+        {
+          "x_time": 20,
+          "survival_probability": 0.75
+        },
+        {
+          "x_time": 30,
+          "survival_probability": 0.61
+        },
+        {
+          "x_time": 40,
+          "survival_probability": 0.41
+        },
+        {
+          "x_time": 50,
+          "survival_probability": 0.25
+        },
+        {
+          "x_time": 60,
+          "survival_probability": 0.16
+        },
+        {
+          "x_time": 70,
+          "survival_probability": 0.16
+        }
+      ],
+      "step_points_visible": [
+        {
+          "time": 0.0,
+          "survival_probability": 1.0,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 10.0,
+          "survival_probability": 0.87,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 20.0,
+          "survival_probability": 0.75,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 30.0,
+          "survival_probability": 0.61,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 40.0,
+          "survival_probability": 0.41,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 50.0,
+          "survival_probability": 0.25,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 60.0,
+          "survival_probability": 0.16,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "time": 70.0,
+          "survival_probability": 0.16,
+          "support_type": "visible",
+          "confidence": 1.0
+        }
+      ],
+      "visible_drop_times": [
+        10.0,
+        20.0,
+        30.0,
+        40.0,
+        50.0,
+        60.0
+      ],
+      "visible_horizontal_segments": [
+        {
+          "start_time": 0,
+          "end_time": 10,
+          "survival_probability": 1.0,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 10,
+          "end_time": 20,
+          "survival_probability": 0.87,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 20,
+          "end_time": 30,
+          "survival_probability": 0.75,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 30,
+          "end_time": 40,
+          "survival_probability": 0.61,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 40,
+          "end_time": 50,
+          "survival_probability": 0.41,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 50,
+          "end_time": 60,
+          "survival_probability": 0.25,
+          "support_type": "visible",
+          "confidence": 1.0
+        },
+        {
+          "start_time": 60,
+          "end_time": 70,
+          "survival_probability": 0.16,
+          "support_type": "visible",
+          "confidence": 1.0
+        }
+      ],
+      "visible_censor_times": [],
+      "last_visible_curve_time": 70.0,
+      "last_visible_curve_survival": 0.16,
+      "curve_confidence": 1.0,
+      "extraction_warnings": [],
+      "interval_event_count_estimates": [],
+      "overlap_inferred_drop_times": [],
+      "estimated_records": [
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.999,
+          "event": 1
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 9.9995,
+          "event": 0
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.999,
+          "event": 1
+        },
+        {
+          "time": 19.9995,
+          "event": 0
+        },
+        {
+          "time": 19.9995,
+          "event": 0
+        },
+        {
+          "time": 19.9995,
+          "event": 0
+        },
+        {
+          "time": 19.9995,
+          "event": 0
+        },
+        {
+          "time": 19.9995,
+          "event": 0
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 29.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.999,
+          "event": 1
+        },
+        {
+          "time": 39.9995,
+          "event": 0
+        },
+        {
+          "time": 39.9995,
+          "event": 0
+        },
+        {
+          "time": 39.9995,
+          "event": 0
+        },
+        {
+          "time": 39.9995,
+          "event": 0
+        },
+        {
+          "time": 39.9995,
+          "event": 0
+        },
+        {
+          "time": 39.9995,
+          "event": 0
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 49.999,
+          "event": 1
+        },
+        {
+          "time": 59.999,
+          "event": 1
+        },
+        {
+          "time": 59.999,
+          "event": 1
+        },
+        {
+          "time": 59.999,
+          "event": 1
+        },
+        {
+          "time": 70.0,
+          "event": 0
+        }
+      ],
+      "interval_summary": [
+        {
+          "interval": "0.0-10.0",
+          "interval_start": 0.0,
+          "interval_end": 10.0,
+          "group": "Group 2 (high risk)",
+          "at_risk_start": 103,
+          "next_known_at_risk": 80,
+          "visible_drop_count": 1,
+          "estimated_events": 13,
+          "estimated_censors": 10,
+          "notes": "conservative censor allocation; bounded by next known risk-table count"
+        },
+        {
+          "interval": "10.0-20.0",
+          "interval_start": 10.0,
+          "interval_end": 20.0,
+          "group": "Group 2 (high risk)",
+          "at_risk_start": 80,
+          "next_known_at_risk": 63,
+          "visible_drop_count": 2,
+          "estimated_events": 12,
+          "estimated_censors": 5,
+          "notes": "conservative censor allocation; bounded by next known risk-table count"
+        },
+        {
+          "interval": "20.0-30.0",
+          "interval_start": 20.0,
+          "interval_end": 30.0,
+          "group": "Group 2 (high risk)",
+          "at_risk_start": 63,
+          "next_known_at_risk": 50,
+          "visible_drop_count": 2,
+          "estimated_events": 13,
+          "estimated_censors": 0,
+          "notes": "bounded by next known risk-table count"
+        },
+        {
+          "interval": "30.0-40.0",
+          "interval_start": 30.0,
+          "interval_end": 40.0,
+          "group": "Group 2 (high risk)",
+          "at_risk_start": 50,
+          "next_known_at_risk": 23,
+          "visible_drop_count": 2,
+          "estimated_events": 21,
+          "estimated_censors": 6,
+          "notes": "conservative censor allocation; bounded by next known risk-table count"
+        },
+        {
+          "interval": "40.0-50.0",
+          "interval_start": 40.0,
+          "interval_end": 50.0,
+          "group": "Group 2 (high risk)",
+          "at_risk_start": 23,
+          "next_known_at_risk": 10,
+          "visible_drop_count": 2,
+          "estimated_events": 13,
+          "estimated_censors": 0,
+          "notes": "bounded by next known risk-table count"
+        },
+        {
+          "interval": "50.0-60.0",
+          "interval_start": 50.0,
+          "interval_end": 60.0,
+          "group": "Group 2 (high risk)",
+          "at_risk_start": 10,
+          "next_known_at_risk": 7,
+          "visible_drop_count": 2,
+          "estimated_events": 3,
+          "estimated_censors": 0,
+          "notes": "bounded by next known risk-table count"
+        },
+        {
+          "interval": "60.0-70.0",
+          "interval_start": 60.0,
+          "interval_end": 70.0,
+          "group": "Group 2 (high risk)",
+          "at_risk_start": 7,
+          "next_known_at_risk": 6,
+          "visible_drop_count": 1,
+          "estimated_events": 0,
+          "estimated_censors": 1,
+          "notes": "conservative censor allocation; bounded by next known risk-table count"
+        }
+      ],
+      "unresolved_tail_count": 0
+    }
+  ],
+  "confidence": 1.0,
+  "warnings": [],
+  "layout_stage": {
+    "title": "Kaplan-Meier Survival Curve",
+    "x_axis_label": "Time (months)",
+    "y_axis_label": "Survival rate (%)",
+    "time_unit": "months",
+    "x_axis_tick_labels": [
+      0,
+      10,
+      20,
+      30,
+      40,
+      50,
+      60,
+      70
+    ],
+    "y_axis_tick_labels": [
+      0,
+      20,
+      40,
+      60,
+      80,
+      100
+    ],
+    "legend_group_names": [
+      "Group 1 (low risk)",
+      "Group 2 (high risk)"
+    ],
+    "plot_area_bounds": {
+      "x0": 0.115,
+      "y0": 0.3,
+      "x1": 0.93,
+      "y1": 0.86
+    },
+    "risk_table_times": [
+      0,
+      10,
+      20,
+      30,
+      40,
+      50,
+      60,
+      70
+    ],
+    "risk_table_rows": [
+      {
+        "group_name": "Group 1",
+        "counts": [
+          112,
+          95,
+          90,
+          85,
+          79,
+          56,
+          53,
+          50
+        ]
+      },
+      {
+        "group_name": "Group 2",
+        "counts": [
+          103,
+          80,
+          63,
+          50,
+          23,
+          10,
+          7,
+          6
+        ]
+      }
+    ],
+    "warnings": []
+  },
+  "reconstruction_summary": {
+    "suspicious_rules_triggered": [],
+    "python_repairs_applied": [],
+    "llm_review_used": false,
+    "conservative_truncation_used": true,
+    "warning_flags": [
+      "event_count_truncated_by_interval_conservation",
+      "conservative_censor_allocation",
+      "interval_overflow_corrected",
+      "Group 1 (low risk): 0.0-10.0: aligned removals to risk-table delta",
+      "Group 1 (low risk): 10.0-20.0: aligned removals to risk-table delta",
+      "Group 1 (low risk): 20.0-30.0: aligned removals to risk-table delta",
+      "Group 1 (low risk): 30.0-40.0: aligned removals to risk-table delta",
+      "Group 1 (low risk): 40.0-50.0: aligned removals to risk-table delta",
+      "Group 1 (low risk): 50.0-60.0: aligned removals to risk-table delta",
+      "Group 1 (low risk): 60.0-70.0: aligned removals to risk-table delta",
+      "Group 2 (high risk): 0.0-10.0: aligned removals to risk-table delta",
+      "Group 2 (high risk): 10.0-20.0: aligned removals to risk-table delta",
+      "Group 2 (high risk): 20.0-30.0: aligned removals to risk-table delta",
+      "Group 2 (high risk): 30.0-40.0: aligned removals to risk-table delta",
+      "Group 2 (high risk): 40.0-50.0: aligned removals to risk-table delta",
+      "Group 2 (high risk): 50.0-60.0: aligned removals to risk-table delta"
+    ],
+    "quality_summary": {
+      "figure_quality_grade": "high",
+      "figure_quality_reasons": [
+        "no major reliability warnings"
+      ],
+      "groups": [
+        {
+          "group_name": "Group 1 (low risk)",
+          "quality_grade": "high",
+          "reasons": [],
+          "terminal_risk_known": true,
+          "unresolved_tail_count": 0
+        },
+        {
+          "group_name": "Group 2 (high risk)",
+          "quality_grade": "high",
+          "reasons": [],
+          "terminal_risk_known": true,
+          "unresolved_tail_count": 0
+        }
+      ],
+      "pairwise_recommendation": "show"
+    }
+  },
+  "canonical_reconstruction": {
+    "groups": [
+      {
+        "group_name": "Group 1 (low risk)",
+        "interval_rows": [
+          {
+            "interval": "0.0-10.0",
+            "interval_start": 0.0,
+            "interval_end": 10.0,
+            "group": "Group 1 (low risk)",
+            "at_risk_start": 112,
+            "next_known_at_risk": 95,
+            "visible_drop_count": 1,
+            "estimated_events": 6,
+            "estimated_censors": 11,
+            "notes": "conservative censor allocation; bounded by next known risk-table count"
+          },
+          {
+            "interval": "10.0-20.0",
+            "interval_start": 10.0,
+            "interval_end": 20.0,
+            "group": "Group 1 (low risk)",
+            "at_risk_start": 95,
+            "next_known_at_risk": 90,
+            "visible_drop_count": 2,
+            "estimated_events": 4,
+            "estimated_censors": 1,
+            "notes": "conservative censor allocation; bounded by next known risk-table count"
+          },
+          {
+            "interval": "20.0-30.0",
+            "interval_start": 20.0,
+            "interval_end": 30.0,
+            "group": "Group 1 (low risk)",
+            "at_risk_start": 90,
+            "next_known_at_risk": 85,
+            "visible_drop_count": 2,
+            "estimated_events": 4,
+            "estimated_censors": 1,
+            "notes": "conservative censor allocation; bounded by next known risk-table count"
+          },
+          {
+            "interval": "30.0-40.0",
+            "interval_start": 30.0,
+            "interval_end": 40.0,
+            "group": "Group 1 (low risk)",
+            "at_risk_start": 85,
+            "next_known_at_risk": 79,
+            "visible_drop_count": 2,
+            "estimated_events": 6,
+            "estimated_censors": 0,
+            "notes": "bounded by next known risk-table count"
+          },
+          {
+            "interval": "40.0-50.0",
+            "interval_start": 40.0,
+            "interval_end": 50.0,
+            "group": "Group 1 (low risk)",
+            "at_risk_start": 79,
+            "next_known_at_risk": 56,
+            "visible_drop_count": 2,
+            "estimated_events": 16,
+            "estimated_censors": 7,
+            "notes": "conservative censor allocation; bounded by next known risk-table count"
+          },
+          {
+            "interval": "50.0-60.0",
+            "interval_start": 50.0,
+            "interval_end": 60.0,
+            "group": "Group 1 (low risk)",
+            "at_risk_start": 56,
+            "next_known_at_risk": 53,
+            "visible_drop_count": 2,
+            "estimated_events": 3,
+            "estimated_censors": 0,
+            "notes": "bounded by next known risk-table count"
+          },
+          {
+            "interval": "60.0-70.0",
+            "interval_start": 60.0,
+            "interval_end": 70.0,
+            "group": "Group 1 (low risk)",
+            "at_risk_start": 53,
+            "next_known_at_risk": 50,
+            "visible_drop_count": 2,
+            "estimated_events": 3,
+            "estimated_censors": 0,
+            "notes": "bounded by next known risk-table count"
+          }
+        ],
+        "records": [
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.9995,
+            "event": 0
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.9995,
+            "event": 0
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.9995,
+            "event": 0
+          },
+          {
+            "time": 49.9995,
+            "event": 0
+          },
+          {
+            "time": 49.9995,
+            "event": 0
+          },
+          {
+            "time": 49.9995,
+            "event": 0
+          },
+          {
+            "time": 49.9995,
+            "event": 0
+          },
+          {
+            "time": 49.9995,
+            "event": 0
+          },
+          {
+            "time": 49.9995,
+            "event": 0
+          },
+          {
+            "time": 59.999,
+            "event": 1
+          },
+          {
+            "time": 59.999,
+            "event": 1
+          },
+          {
+            "time": 59.999,
+            "event": 1
+          },
+          {
+            "time": 70.0,
+            "event": 1
+          },
+          {
+            "time": 70.0,
+            "event": 1
+          },
+          {
+            "time": 70.0,
+            "event": 1
+          }
+        ],
+        "event_total": 42,
+        "censor_total": 20,
+        "unresolved_tail_count": 0,
+        "terminal_risk_known": true,
+        "initial_n": 112,
+        "last_known_risk": 50,
+        "final_known_risk": 50,
+        "last_visible_curve_time": 70.0,
+        "last_visible_curve_survival": 0.57,
+        "visible_drop_count": 7,
+        "overlap_inferred_drop_count": 0
+      },
+      {
+        "group_name": "Group 2 (high risk)",
+        "interval_rows": [
+          {
+            "interval": "0.0-10.0",
+            "interval_start": 0.0,
+            "interval_end": 10.0,
+            "group": "Group 2 (high risk)",
+            "at_risk_start": 103,
+            "next_known_at_risk": 80,
+            "visible_drop_count": 1,
+            "estimated_events": 13,
+            "estimated_censors": 10,
+            "notes": "conservative censor allocation; bounded by next known risk-table count"
+          },
+          {
+            "interval": "10.0-20.0",
+            "interval_start": 10.0,
+            "interval_end": 20.0,
+            "group": "Group 2 (high risk)",
+            "at_risk_start": 80,
+            "next_known_at_risk": 63,
+            "visible_drop_count": 2,
+            "estimated_events": 12,
+            "estimated_censors": 5,
+            "notes": "conservative censor allocation; bounded by next known risk-table count"
+          },
+          {
+            "interval": "20.0-30.0",
+            "interval_start": 20.0,
+            "interval_end": 30.0,
+            "group": "Group 2 (high risk)",
+            "at_risk_start": 63,
+            "next_known_at_risk": 50,
+            "visible_drop_count": 2,
+            "estimated_events": 13,
+            "estimated_censors": 0,
+            "notes": "bounded by next known risk-table count"
+          },
+          {
+            "interval": "30.0-40.0",
+            "interval_start": 30.0,
+            "interval_end": 40.0,
+            "group": "Group 2 (high risk)",
+            "at_risk_start": 50,
+            "next_known_at_risk": 23,
+            "visible_drop_count": 2,
+            "estimated_events": 21,
+            "estimated_censors": 6,
+            "notes": "conservative censor allocation; bounded by next known risk-table count"
+          },
+          {
+            "interval": "40.0-50.0",
+            "interval_start": 40.0,
+            "interval_end": 50.0,
+            "group": "Group 2 (high risk)",
+            "at_risk_start": 23,
+            "next_known_at_risk": 10,
+            "visible_drop_count": 2,
+            "estimated_events": 13,
+            "estimated_censors": 0,
+            "notes": "bounded by next known risk-table count"
+          },
+          {
+            "interval": "50.0-60.0",
+            "interval_start": 50.0,
+            "interval_end": 60.0,
+            "group": "Group 2 (high risk)",
+            "at_risk_start": 10,
+            "next_known_at_risk": 7,
+            "visible_drop_count": 2,
+            "estimated_events": 3,
+            "estimated_censors": 0,
+            "notes": "bounded by next known risk-table count"
+          },
+          {
+            "interval": "60.0-70.0",
+            "interval_start": 60.0,
+            "interval_end": 70.0,
+            "group": "Group 2 (high risk)",
+            "at_risk_start": 7,
+            "next_known_at_risk": 6,
+            "visible_drop_count": 1,
+            "estimated_events": 0,
+            "estimated_censors": 1,
+            "notes": "conservative censor allocation; bounded by next known risk-table count"
+          }
+        ],
+        "records": [
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.999,
+            "event": 1
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 9.9995,
+            "event": 0
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.999,
+            "event": 1
+          },
+          {
+            "time": 19.9995,
+            "event": 0
+          },
+          {
+            "time": 19.9995,
+            "event": 0
+          },
+          {
+            "time": 19.9995,
+            "event": 0
+          },
+          {
+            "time": 19.9995,
+            "event": 0
+          },
+          {
+            "time": 19.9995,
+            "event": 0
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 29.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.999,
+            "event": 1
+          },
+          {
+            "time": 39.9995,
+            "event": 0
+          },
+          {
+            "time": 39.9995,
+            "event": 0
+          },
+          {
+            "time": 39.9995,
+            "event": 0
+          },
+          {
+            "time": 39.9995,
+            "event": 0
+          },
+          {
+            "time": 39.9995,
+            "event": 0
+          },
+          {
+            "time": 39.9995,
+            "event": 0
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 49.999,
+            "event": 1
+          },
+          {
+            "time": 59.999,
+            "event": 1
+          },
+          {
+            "time": 59.999,
+            "event": 1
+          },
+          {
+            "time": 59.999,
+            "event": 1
+          },
+          {
+            "time": 70.0,
+            "event": 0
+          }
+        ],
+        "event_total": 75,
+        "censor_total": 22,
+        "unresolved_tail_count": 0,
+        "terminal_risk_known": true,
+        "initial_n": 103,
+        "last_known_risk": 6,
+        "final_known_risk": 6,
+        "last_visible_curve_time": 70.0,
+        "last_visible_curve_survival": 0.16,
+        "visible_drop_count": 6,
+        "overlap_inferred_drop_count": 0
+      }
+    ],
+    "accounting_identities_passed": true,
+    "interval_conservation_passed": true,
+    "issues": [],
+    "interval_convention": "[t_i, t_{i+1}) for all but final interval, which is closed at right bound."
+  },
+  "quality_summary": {
+    "figure_quality_grade": "high",
+    "figure_quality_reasons": [
+      "no major reliability warnings"
+    ],
+    "groups": [
+      {
+        "group_name": "Group 1 (low risk)",
+        "quality_grade": "high",
+        "reasons": [],
+        "terminal_risk_known": true,
+        "unresolved_tail_count": 0
+      },
+      {
+        "group_name": "Group 2 (high risk)",
+        "quality_grade": "high",
+        "reasons": [],
+        "terminal_risk_known": true,
+        "unresolved_tail_count": 0
+      }
+    ],
+    "pairwise_recommendation": "show"
+  }
+}
