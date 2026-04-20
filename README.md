@@ -1,98 +1,92 @@
 # KM Log-rank Web App
 
-A beginner-friendly Flask course project that now uses an **LLM vision API** to extract approximate Kaplan-Meier (KM) information from uploaded figures, then computes a two-group log-rank test from reconstructed records.
+## Overview
+This project is a Flask web app for Kaplan-Meier (KM) survival analysis workflows used in a course project submission. It supports both manual survival input and image-based KM extraction, then presents log-rank testing and related outputs in a grader-friendly interface.
 
-## What's new in this upgrade
+For uploaded figures, extraction is LLM-assisted and reconstruction-based, so image-derived results should be treated as **approximate** (not exact patient-level ground truth).
 
-The previous OCR/heuristic-only prototype has been refactored so upload analysis now uses the OpenAI Python SDK (Responses API with image input).
+## Current Features
 
-Current workflows:
-- **Manual mode**: paste survival records directly (`time,event`) and run log-rank.
-- **Upload mode (LLM API)**: upload a KM image, run LLM-based structured extraction, reconstruct estimated records, then compute log-rank when two groups are available.
+### 1) Manual Survival Analysis
+- Run a two-group log-rank test directly from pasted records.
+- Accepted row formats:
+  - `time,event`
+  - `time event`
+- Manual mode is fully independent from upload mode.
 
-## Important disclaimer
+### 2) Upload KM Figure Analysis (LLM-assisted)
+- Upload PNG/JPG/JPEG Kaplan-Meier figures.
+- The app uses LLM vision extraction, reconstructs records, and computes KM/log-rank outputs from the extracted structure.
+- Upload analysis supports multi-group reconstruction display; pairwise/group-level analysis is surfaced from reconstructed groups when available.
 
-All image-derived outputs are **approximate** because they are inferred from plotted curves, not source patient-level time-to-event data.
+### 3) Cached-output Public Demo Mode
+- Public deployment is configured as a cached-output demo.
+- Public users can open precomputed demo outputs without providing an API key.
+- Live extraction is disabled in the public deployment.
 
-## Setup
+### 4) Final Demo Examples on the Site
+- **Two-group KM example** (cached demo)
+- **Three-group KM example** (cached demo)
+- **Indirect comparison across related papers** (additional / extra-credit function)
 
+## Public Demo Deliverables
+The public site includes final demo deliverables for:
+- Two-group KM example
+- Three-group KM example
+- Indirect comparison example
+
+For the KM examples, demo pages show both:
+- the original Kaplan-Meier figure, and
+- the cached processed result used for demonstration.
+
+## Local Setup
 1. Create and activate a virtual environment:
-
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    ```
-
 2. Install dependencies:
-
    ```bash
    pip install -r requirements.txt
    ```
-
-3. Configure environment variables (never commit your real key):
-
+3. Configure environment variables for local live extraction only:
    ```bash
    cp .env.example .env
-   # then edit .env
    ```
-
-   `.env` should contain:
-
+   Then set:
    ```env
    OPENAI_API_KEY=your_key_here
    ```
 
-   You can also export directly in your shell instead of using `.env`.
+> `OPENAI_API_KEY` is only needed when you want to run **live local extraction**.
 
-## Run the app
-
+## Run Locally
 ```bash
 python app.py
 ```
+Then open: <http://127.0.0.1:5000/>
 
-Open <http://127.0.0.1:5000/>.
+## Public Demo / No-key Behavior
+- The public deployment is a **cached-output demo**.
+- **No API key is required** for public viewing of demo results.
+- Live extraction is intentionally disabled in the public environment.
+- The indirect comparison module remains accessible as part of the final demo.
 
-Production (Railway/Gunicorn):
+## Deployment Note (Render)
+Deploy as a Flask web service on Render:
+- Build command:
+  ```bash
+  pip install -r requirements.txt
+  ```
+- Start command:
+  ```bash
+  gunicorn app:app
+  ```
+- Expose the app via the Render public URL for grading/demo access.
+- Do **not** place API keys in the public demo deployment.
 
-```bash
-gunicorn -b 0.0.0.0:$PORT app:app
-```
-
-## Upload-mode behavior (LLM + cache)
-
-- The app hashes each uploaded image (SHA-256).
-- Cache files are stored in `cache/<image_hash>.json` after successful extractions.
-- If the same image is uploaded again, cached JSON is reused and the page labels the source as **cached LLM response**.
-- If `OPENAI_API_KEY` is missing:
-  - cached output is still used when available,
-  - otherwise the app shows a clear message that no key is configured and no cached run exists.
-
-## Safe class demo without exposing keys
-
-Recommended assignment demo sequence:
-
-1. Run once locally with `OPENAI_API_KEY` set and upload your KM image.
-2. Confirm a new JSON file appears in `cache/`.
-3. Stop app, unset key (or remove from environment), restart app.
-4. Upload the same image again and show the results page note: **cached LLM response**.
-5. Capture screenshots of:
-   - home page (manual + upload modes),
-   - upload results with extraction source,
-   - structured JSON block,
-   - reconstructed records + chi-square/p-value,
-   - confidence and warnings.
-
-This demonstrates API-based extraction and caching while keeping keys out of screenshots and the UI.
-
-## Railway deployment note (public grading demo)
-
-- Deploy this repository to Railway.
-- Use the start command: `gunicorn -b 0.0.0.0:$PORT app:app`.
-- Generate a public Railway domain for grader access.
-- Do **not** include `OPENAI_API_KEY` in the submitted/public demo deployment.
-- Public demo behavior is cached-output only (precomputed cached examples + existing cache hits).
-
-## Project structure
+## Project Structure
+Only listing items present in this repository:
 
 ```text
 .
@@ -101,18 +95,25 @@ This demonstrates API-based extraction and caching while keeping keys out of scr
 ├── metadata_extraction.py
 ├── survival_reconstruction.py
 ├── requirements.txt
+├── Procfile
+├── README.md
 ├── .env.example
+├── demo_cache/
 ├── cache/
 ├── uploads/
 ├── static/
-│   └── styles.css
-└── templates/
-    ├── index.html
-    └── results.html
+│   ├── styles.css
+│   └── demo/
+├── templates/
+│   ├── index.html
+│   ├── results.html
+│   └── indirect_comparison.html
+├── manual_parser_smoke.py
+└── post_reconstruction_smoke.py
 ```
 
 ## Notes
-
-- API keys are read from environment variables only.
-- The website never asks users to paste keys into forms.
-- Manual mode remains available and independent from upload mode.
+- API keys are environment-only and should not be committed.
+- Public deployment is cached-output only.
+- Manual mode and upload mode are separate workflows.
+- Indirect comparison is the additional / extra-credit function in the final demo.
