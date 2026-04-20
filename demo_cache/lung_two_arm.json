@@ -1,0 +1,100 @@
+{
+  "overall_x_axis_max": 24,
+  "confidence": 0.82,
+  "warnings": [
+    "demo payload: precomputed example"
+  ],
+  "canonical_reconstruction": {
+    "accounting_identities_passed": true,
+    "interval_conservation_passed": true,
+    "groups": [
+      {
+        "group_name": "Treatment A",
+        "initial_n": 8,
+        "last_visible_curve_time": 24,
+        "last_visible_curve_survival": 0.38,
+        "visible_drop_count": 5,
+        "overlap_inferred_drop_count": 0,
+        "event_total": 5,
+        "censor_total": 3,
+        "terminal_risk_known": true,
+        "unresolved_tail_count": 0,
+        "interval_rows": [
+          {
+            "interval": "0-12",
+            "group": "Treatment A",
+            "at_risk_start": 8,
+            "visible_drop_count": 3,
+            "estimated_events": 3,
+            "estimated_censors": 1,
+            "notes": "demo"
+          }
+        ],
+        "records": [
+          {"time": 4, "event": 1},
+          {"time": 7, "event": 1},
+          {"time": 10, "event": 0},
+          {"time": 12, "event": 1},
+          {"time": 15, "event": 0},
+          {"time": 18, "event": 1},
+          {"time": 20, "event": 0},
+          {"time": 22, "event": 1}
+        ]
+      },
+      {
+        "group_name": "Control B",
+        "initial_n": 8,
+        "last_visible_curve_time": 24,
+        "last_visible_curve_survival": 0.12,
+        "visible_drop_count": 7,
+        "overlap_inferred_drop_count": 0,
+        "event_total": 7,
+        "censor_total": 1,
+        "terminal_risk_known": true,
+        "unresolved_tail_count": 0,
+        "interval_rows": [
+          {
+            "interval": "0-12",
+            "group": "Control B",
+            "at_risk_start": 8,
+            "visible_drop_count": 4,
+            "estimated_events": 4,
+            "estimated_censors": 0,
+            "notes": "demo"
+          }
+        ],
+        "records": [
+          {"time": 3, "event": 1},
+          {"time": 5, "event": 1},
+          {"time": 8, "event": 1},
+          {"time": 9, "event": 0},
+          {"time": 11, "event": 1},
+          {"time": 14, "event": 1},
+          {"time": 16, "event": 1},
+          {"time": 19, "event": 1}
+        ]
+      }
+    ]
+  },
+  "quality_summary": {
+    "figure_quality_grade": "high",
+    "figure_quality_reasons": [],
+    "pairwise_recommendation": "show",
+    "groups": [
+      {
+        "group_name": "Treatment A",
+        "quality_grade": "high",
+        "terminal_risk_known": true,
+        "unresolved_tail_count": 0,
+        "reasons": []
+      },
+      {
+        "group_name": "Control B",
+        "quality_grade": "high",
+        "terminal_risk_known": true,
+        "unresolved_tail_count": 0,
+        "reasons": []
+      }
+    ]
+  }
+}

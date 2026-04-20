@@ -9,6 +9,11 @@
   <body>
     <main class="container">
       <h1>Results</h1>
+      {% if demo_mode_notice %}
+      <section class="message message-error">
+        <strong>Public demo mode:</strong> this deployment is running with cached outputs only (no live API key).
+      </section>
+      {% endif %}
 
       {% if mode == "manual" %}
       <section class="result-card">
@@ -103,7 +108,7 @@
             {% endfor %}
           </ul>
           {% endif %}
-          {% if metadata_output and metadata_output.reconstruction_summary.warning_flags %}
+          {% if metadata_output and metadata_output.get("reconstruction_summary") and metadata_output.reconstruction_summary.warning_flags %}
           <ul>
             {% for flag in metadata_output.reconstruction_summary.warning_flags %}
             <li>{{ flag }}</li>
