@@ -49,16 +49,29 @@ def parse_survival_records(raw_text: str, group_label: str) -> list[dict[str, fl
     records: list[dict[str, float | int]] = []
     comma_pattern = re.compile(r"^\s*([^,\s]+)\s*,\s*([^,\s]+)\s*$")
     whitespace_pattern = re.compile(r"^\s*(\S+)\s+(\S+)\s*$")
+    zero_width_pattern = re.compile(r"[\u200B-\u200D\u2060\uFEFF]")
+    punctuation_translation = str.maketrans({"，": ",", "、": ","})
+    whitespace_translation = str.maketrans(
+        {
+            "\u3000": " ",  # ideographic/full-width space
+            "\u00A0": " ",  # non-breaking space
+            "\t": " ",
+        }
+    )
 
     for line_index, raw_line in enumerate(lines, start=1):
-        line = raw_line.strip()
+        line = zero_width_pattern.sub("", raw_line)
+        line = line.translate(punctuation_translation)
+        line = line.translate(whitespace_translation)
+        line = line.strip()
         if not line:
             continue
 
         match = comma_pattern.match(line) or whitespace_pattern.match(line)
         if not match:
             raise ValueError(
-                f"{group_label}, line {line_index}: expected 'time,event' or 'time event'."
+                f"{group_label}, line {line_index}: expected 'time,event' or 'time event'. "
+                "Full-width punctuation/spaces may need normalization."
             )
         parts = [match.group(1), match.group(2)]
 
