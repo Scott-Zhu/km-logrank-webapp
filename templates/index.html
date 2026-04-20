@@ -16,6 +16,13 @@
         <a href="{{ url_for('indirect_comparison') }}">Go to Indirect Comparison (Additional Function)</a>
       </p>
 
+      {% if not live_extraction_enabled %}
+      <section class="message message-error">
+        <strong>Public demo mode:</strong> this deployment uses cached outputs only. Live API extraction is disabled
+        because <code>OPENAI_API_KEY</code> is not configured.
+      </section>
+      {% endif %}
+
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
       <section aria-live="polite" class="messages">
@@ -60,11 +67,18 @@
 
       <section class="upload-card">
         <h2>Upload Kaplan-Meier Image (LLM API Extraction)</h2>
+        {% if live_extraction_enabled %}
         <form action="{{ url_for('upload_image') }}" method="post" enctype="multipart/form-data">
           <label for="image_file">Select image file (PNG, JPG, JPEG)</label>
           <input id="image_file" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" required />
           <button type="submit">Upload and analyze</button>
         </form>
+        {% else %}
+        <p>
+          Live extraction is currently disabled in this public deployment. Use the cached demo examples below, or
+          run locally with an API key to generate new extractions.
+        </p>
+        {% endif %}
         <p>
           <strong>Upload mode:</strong> uses the OpenAI Responses API to infer approximate structured data from the KM figure,
           then computes an approximate two-group log-rank result from reconstructed records.
@@ -72,6 +86,23 @@
         <p class="small-note">
           API keys are read only from <code>OPENAI_API_KEY</code> environment variables. This page never asks you to paste keys.
         </p>
+      </section>
+
+      <section class="upload-card">
+        <h2>Cached demo examples</h2>
+        <p>Open a precomputed result package with no live API call.</p>
+        <ul>
+          {% for example in demo_examples %}
+          <li>
+            <strong>{{ example.title }}</strong> — {{ example.description }}
+            {% if example.available %}
+            <a href="{{ url_for('demo_example', slug=example.slug) }}">Open cached result</a>
+            {% else %}
+            <span class="small-note">(example not bundled)</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
       </section>
     </main>
   </body>

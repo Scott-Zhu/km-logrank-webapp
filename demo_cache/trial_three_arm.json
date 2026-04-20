@@ -1,0 +1,88 @@
+{
+  "overall_x_axis_max": 30,
+  "confidence": 0.74,
+  "warnings": [
+    "demo payload: precomputed three-arm example"
+  ],
+  "canonical_reconstruction": {
+    "accounting_identities_passed": true,
+    "interval_conservation_passed": true,
+    "groups": [
+      {
+        "group_name": "Arm A",
+        "initial_n": 7,
+        "last_visible_curve_time": 30,
+        "last_visible_curve_survival": 0.43,
+        "visible_drop_count": 4,
+        "overlap_inferred_drop_count": 1,
+        "event_total": 4,
+        "censor_total": 3,
+        "terminal_risk_known": true,
+        "unresolved_tail_count": 0,
+        "records": [
+          {"time": 5, "event": 1},
+          {"time": 9, "event": 0},
+          {"time": 12, "event": 1},
+          {"time": 18, "event": 0},
+          {"time": 20, "event": 1},
+          {"time": 24, "event": 0},
+          {"time": 26, "event": 1}
+        ]
+      },
+      {
+        "group_name": "Arm B",
+        "initial_n": 7,
+        "last_visible_curve_time": 30,
+        "last_visible_curve_survival": 0.2,
+        "visible_drop_count": 6,
+        "overlap_inferred_drop_count": 0,
+        "event_total": 6,
+        "censor_total": 1,
+        "terminal_risk_known": true,
+        "unresolved_tail_count": 0,
+        "records": [
+          {"time": 4, "event": 1},
+          {"time": 8, "event": 1},
+          {"time": 10, "event": 0},
+          {"time": 13, "event": 1},
+          {"time": 17, "event": 1},
+          {"time": 21, "event": 1},
+          {"time": 25, "event": 1}
+        ]
+      },
+      {
+        "group_name": "Arm C",
+        "initial_n": 7,
+        "last_visible_curve_time": 30,
+        "last_visible_curve_survival": 0.61,
+        "visible_drop_count": 3,
+        "overlap_inferred_drop_count": 0,
+        "event_total": 3,
+        "censor_total": 4,
+        "terminal_risk_known": true,
+        "unresolved_tail_count": 0,
+        "records": [
+          {"time": 6, "event": 0},
+          {"time": 11, "event": 1},
+          {"time": 14, "event": 0},
+          {"time": 16, "event": 0},
+          {"time": 19, "event": 1},
+          {"time": 23, "event": 0},
+          {"time": 27, "event": 1}
+        ]
+      }
+    ]
+  },
+  "quality_summary": {
+    "figure_quality_grade": "medium",
+    "figure_quality_reasons": [
+      "minor overlap reconstruction used"
+    ],
+    "pairwise_recommendation": "exploratory",
+    "groups": [
+      {"group_name": "Arm A", "quality_grade": "medium", "terminal_risk_known": true, "unresolved_tail_count": 0, "reasons": ["minor overlap"]},
+      {"group_name": "Arm B", "quality_grade": "medium", "terminal_risk_known": true, "unresolved_tail_count": 0, "reasons": ["curve crossing near end"]},
+      {"group_name": "Arm C", "quality_grade": "medium", "terminal_risk_known": true, "unresolved_tail_count": 0, "reasons": []}
+    ]
+  }
+}

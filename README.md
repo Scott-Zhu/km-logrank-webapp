@@ -52,6 +52,12 @@ python app.py
 
 Open <http://127.0.0.1:5000/>.
 
+Production (Railway/Gunicorn):
+
+```bash
+gunicorn -b 0.0.0.0:$PORT app:app
+```
+
 ## Upload-mode behavior (LLM + cache)
 
 - The app hashes each uploaded image (SHA-256).
@@ -77,6 +83,14 @@ Recommended assignment demo sequence:
    - confidence and warnings.
 
 This demonstrates API-based extraction and caching while keeping keys out of screenshots and the UI.
+
+## Railway deployment note (public grading demo)
+
+- Deploy this repository to Railway.
+- Use the start command: `gunicorn -b 0.0.0.0:$PORT app:app`.
+- Generate a public Railway domain for grader access.
+- Do **not** include `OPENAI_API_KEY` in the submitted/public demo deployment.
+- Public demo behavior is cached-output only (precomputed cached examples + existing cache hits).
 
 ## Project structure
 

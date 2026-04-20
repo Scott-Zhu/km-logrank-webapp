@@ -31,10 +31,33 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = "dev-secret-key"
 app.config["UPLOAD_FOLDER"] = Path("uploads")
 app.config["CACHE_FOLDER"] = Path("cache")
+app.config["DEMO_CACHE_FOLDER"] = Path("demo_cache")
 app.config["ALLOWED_EXTENSIONS"] = {"png", "jpg", "jpeg"}
 
 app.config["UPLOAD_FOLDER"].mkdir(parents=True, exist_ok=True)
 app.config["CACHE_FOLDER"].mkdir(parents=True, exist_ok=True)
+app.config["DEMO_CACHE_FOLDER"].mkdir(parents=True, exist_ok=True)
+
+DEMO_EXAMPLES = [
+    {
+        "slug": "lung-two-arm",
+        "title": "Two-arm OS example",
+        "description": "Cached two-group Kaplan-Meier reconstruction with a clear separation.",
+        "filename": "lung_two_arm.json",
+    },
+    {
+        "slug": "trial-three-arm",
+        "title": "Three-arm OS example",
+        "description": "Cached multi-group reconstruction with pairwise comparisons.",
+        "filename": "trial_three_arm.json",
+    },
+    {
+        "slug": "balanced-two-arm",
+        "title": "Balanced two-arm example",
+        "description": "Cached two-group reconstruction with similar outcomes.",
+        "filename": "balanced_two_arm.json",
+    },
+]
 
 
 def is_allowed_file(filename: str) -> bool:
@@ -42,6 +65,37 @@ def is_allowed_file(filename: str) -> bool:
         return False
     extension = filename.rsplit(".", 1)[1].lower()
     return extension in app.config["ALLOWED_EXTENSIONS"]
+
+
+def _is_live_extraction_enabled() -> bool:
+    return KMVisionExtractor().is_configured()
+
+
+def _list_demo_examples() -> list[dict[str, str | bool]]:
+    folder = app.config["DEMO_CACHE_FOLDER"]
+    rows: list[dict[str, str | bool]] = []
+    for entry in DEMO_EXAMPLES:
+        path = folder / str(entry["filename"])
+        rows.append(
+            {
+                "slug": str(entry["slug"]),
+                "title": str(entry["title"]),
+                "description": str(entry["description"]),
+                "available": path.exists(),
+            }
+        )
+    return rows
+
+
+def _load_demo_payload(slug: str) -> tuple[dict | None, dict | None]:
+    for entry in DEMO_EXAMPLES:
+        if entry["slug"] != slug:
+            continue
+        payload_path = app.config["DEMO_CACHE_FOLDER"] / str(entry["filename"])
+        if not payload_path.exists():
+            return None, entry
+        return json.loads(payload_path.read_text(encoding="utf-8")), entry
+    return None, None
 
 
 def parse_survival_records(raw_text: str, group_label: str) -> list[dict[str, float | int]]:
@@ -692,7 +746,13 @@ def _build_indirect_quality_panel(paper_1: dict, paper_2: dict, effect_source_av
 
 @app.route("/")
 def home():
-    return render_template("index.html", manual_group_a="", manual_group_b="")
+    return render_template(
+        "index.html",
+        manual_group_a="",
+        manual_group_b="",
+        live_extraction_enabled=_is_live_extraction_enabled(),
+        demo_examples=_list_demo_examples(),
+    )
 
 
 @app.route("/indirect-comparison", methods=["GET", "POST"])
@@ -874,6 +934,15 @@ def upload_image():
     destination = app.config["UPLOAD_FOLDER"] / filename
     file.save(destination)
 
+    image_hash = image_sha256(destination)
+    if not _is_live_extraction_enabled() and _load_cached_extraction(image_hash) is None:
+        flash(
+            "This public demo runs in cached-output mode only. "
+            "No API key is configured, so new live extraction is disabled.",
+            "error",
+        )
+        return redirect(url_for("home"))
+
     session["latest_upload"] = {"filename": filename, "content_type": file.content_type or "Unknown"}
     session["result_mode"] = "upload"
     session.pop("manual_analysis", None)
@@ -891,7 +960,16 @@ def manual_logrank():
         logrank_output = compute_logrank_test(group_a_records, group_b_records)
     except ValueError as exc:
         flash(str(exc), "error")
-        return render_template("index.html", manual_group_a=group_a_text, manual_group_b=group_b_text), 400
+        return (
+            render_template(
+                "index.html",
+                manual_group_a=group_a_text,
+                manual_group_b=group_b_text,
+                live_extraction_enabled=_is_live_extraction_enabled(),
+                demo_examples=_list_demo_examples(),
+            ),
+            400,
+        )
 
     session["manual_analysis"] = {
         "group_a_count": len(group_a_records),
@@ -961,11 +1039,42 @@ def results():
             auto_logrank=auto_logrank,
             extraction_source=extraction_source,
             extraction_error=extraction_error,
+            demo_mode_notice=not extractor.is_configured(),
             manual_analysis=None,
         )
 
     flash("Upload an image first or run a manual log-rank test.", "error")
     return redirect(url_for("home"))
+
+
+@app.route("/demo/<slug>")
+def demo_example(slug: str):
+    payload, meta = _load_demo_payload(slug)
+    if meta is None:
+        flash("Unknown cached demo example.", "error")
+        return redirect(url_for("home"))
+    if payload is None:
+        flash("Cached demo payload is missing in this deployment package.", "error")
+        return redirect(url_for("home"))
+
+    try:
+        auto_logrank = _build_auto_logrank(payload)
+    except (ValueError, ImportError) as exc:
+        auto_logrank = {"available": False, "message": str(exc)}
+
+    return render_template(
+        "results.html",
+        mode="upload",
+        file_metadata={"filename": f"{meta['slug']} (precomputed demo)"},
+        image_url=None,
+        metadata_output=payload,
+        metadata_json=json.dumps(payload, indent=2),
+        auto_logrank=auto_logrank,
+        extraction_source="cached demo payload",
+        extraction_error=None,
+        demo_mode_notice=True,
+        manual_analysis=None,
+    )
 
 
 @app.route("/uploads/<path:filename>")
