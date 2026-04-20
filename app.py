@@ -1,6 +1,7 @@
 from math import erfc, exp, log, sqrt
 from pathlib import Path
 import json
+import re
 from itertools import combinations
 
 from dotenv import load_dotenv
@@ -46,18 +47,20 @@ def is_allowed_file(filename: str) -> bool:
 def parse_survival_records(raw_text: str, group_label: str) -> list[dict[str, float | int]]:
     lines = raw_text.splitlines()
     records: list[dict[str, float | int]] = []
+    comma_pattern = re.compile(r"^\s*([^,\s]+)\s*,\s*([^,\s]+)\s*$")
+    whitespace_pattern = re.compile(r"^\s*(\S+)\s+(\S+)\s*$")
 
     for line_index, raw_line in enumerate(lines, start=1):
         line = raw_line.strip()
         if not line:
             continue
 
-        normalized = line.replace(",", " ")
-        parts = [part for part in normalized.split() if part]
-        if len(parts) != 2:
+        match = comma_pattern.match(line) or whitespace_pattern.match(line)
+        if not match:
             raise ValueError(
-                f"{group_label}, line {line_index}: expected exactly two values (time and event)."
+                f"{group_label}, line {line_index}: expected 'time,event' or 'time event'."
             )
+        parts = [match.group(1), match.group(2)]
 
         time_text, event_text = parts
         try:
@@ -323,6 +326,20 @@ def _save_cached_extraction(image_hash: str, payload: dict) -> None:
 
 def _list_cached_hashes() -> list[str]:
     return sorted(path.stem for path in app.config["CACHE_FOLDER"].glob("*.json"))
+
+
+def _uploaded_image_url_for_hash(image_hash: str) -> str | None:
+    for upload_path in app.config["UPLOAD_FOLDER"].iterdir():
+        if not upload_path.is_file():
+            continue
+        if upload_path.suffix.lower().lstrip(".") not in app.config["ALLOWED_EXTENSIONS"]:
+            continue
+        try:
+            if image_sha256(upload_path) == image_hash:
+                return url_for("uploaded_file", filename=upload_path.name)
+        except OSError:
+            continue
+    return None
 
 
 def _derive_cached_effect_estimate(payload: dict, comparison_label: str) -> dict[str, float | str]:
@@ -682,8 +699,8 @@ def indirect_comparison():
         "journal": "Journal name",
         "comparison_label": "A vs B",
         "endpoint_name": "Overall Survival",
-        "figure_status": "Uploaded/cached placeholder",
-        "image_url": url_for("uploaded_file", filename=latest_upload["filename"]) if latest_upload else None,
+        "figure_status": "No cached KM figure selected for this direct comparison.",
+        "image_url": None,
         "hr": 0.82,
         "ci_lower": 0.68,
         "ci_upper": 0.99,
@@ -698,7 +715,7 @@ def indirect_comparison():
         "journal": "Journal name",
         "comparison_label": "C vs B",
         "endpoint_name": "Overall Survival",
-        "figure_status": "Uploaded/cached placeholder",
+        "figure_status": "No cached KM figure selected for this direct comparison.",
         "image_url": None,
         "hr": 1.10,
         "ci_lower": 0.92,
@@ -759,6 +776,14 @@ def indirect_comparison():
                     f"Derived from cached KM reconstruction (cache hash: {paper['cached_hash']}). "
                     "No live API call was used."
                 )
+                paper["image_url"] = _uploaded_image_url_for_hash(paper["cached_hash"])
+                if paper["image_url"]:
+                    paper["figure_status"] = f"Preview linked to cached hash {paper['cached_hash']}."
+                else:
+                    paper["figure_status"] = (
+                        f"Cached estimate loaded from hash {paper['cached_hash']}. "
+                        "No matching uploaded KM image preview is available."
+                    )
                 continue
 
             numeric_fields = (
@@ -777,6 +802,8 @@ def indirect_comparison():
                     )
                     effect_source_available = False
             paper["provenance_note"] = "Article-reported effect (HR/95% CI entered manually)."
+            paper["image_url"] = None
+            paper["figure_status"] = "No cached KM figure selected for this direct comparison."
 
         quality_panel = _build_indirect_quality_panel(paper_1, paper_2, effect_source_available)
 
