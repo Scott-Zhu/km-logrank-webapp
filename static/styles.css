@@ -233,3 +233,12 @@ summary {
   background: #fee2e2;
   color: #991b1b;
 }
+
+.provenance-highlight {
+  font-weight: 600;
+}
+
+.low-quality-block {
+  display: block;
+  margin-top: 8px;
+}
