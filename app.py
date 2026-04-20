@@ -457,6 +457,46 @@ def home():
     return render_template("index.html", manual_group_a="", manual_group_b="")
 
 
+@app.route("/indirect-comparison")
+def indirect_comparison():
+    latest_upload = session.get("latest_upload")
+    placeholder_paper_1 = {
+        "title": "Paper 1 title placeholder",
+        "authors": "First author et al.",
+        "year": "YYYY",
+        "journal": "Journal name",
+        "comparison_label": "A vs B",
+        "endpoint_name": "Overall Survival (OS)",
+        "figure_status": "Uploaded/cached placeholder",
+        "image_url": (
+            url_for("uploaded_file", filename=latest_upload["filename"]) if latest_upload else None
+        ),
+    }
+    placeholder_paper_2 = {
+        "title": "Paper 2 title placeholder",
+        "authors": "First author et al.",
+        "year": "YYYY",
+        "journal": "Journal name",
+        "comparison_label": "B vs C (or C vs B)",
+        "endpoint_name": "Overall Survival (OS)",
+        "figure_status": "Uploaded/cached placeholder",
+        "image_url": None,
+    }
+
+    return render_template(
+        "indirect_comparison.html",
+        paper_1=placeholder_paper_1,
+        paper_2=placeholder_paper_2,
+        shared_comparator="B",
+        anchored_result={
+            "status": "Math not implemented yet",
+            "estimate": "Placeholder",
+            "confidence_interval": "Placeholder",
+            "p_value": "Placeholder",
+        },
+    )
+
+
 @app.route("/upload", methods=["POST"])
 def upload_image():
     if "image_file" not in request.files:

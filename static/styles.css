@@ -166,3 +166,30 @@ summary {
   font-weight: 600;
   margin-top: 8px;
 }
+
+.badge-extra {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: #ede9fe;
+  color: #5b21b6;
+  border: 1px solid #ddd6fe;
+}
+
+.placeholder-figure {
+  margin-top: 10px;
+  border: 1px dashed #9ca3af;
+  border-radius: 8px;
+  padding: 18px 12px;
+  text-align: center;
+  color: #4b5563;
+  background: #ffffff;
+}
+
+.compact-result-card {
+  background: #f0f9ff;
+  border-color: #bfdbfe;
+}

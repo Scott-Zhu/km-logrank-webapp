@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Indirect Comparison | KM Log-rank Web App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Indirect Comparison</h1>
+      <p><span class="badge-extra">Additional Function</span></p>
+      <p class="small-note">
+        Extra-credit page scaffold for anchored indirect comparison (A vs C) using two article-based comparisons with shared comparator {{ shared_comparator }}.
+      </p>
+      <p><a href="{{ url_for('home') }}">Back to home</a></p>
+
+      <section class="result-card">
+        <h2>Paper 1 (A vs B)</h2>
+        <p><strong>Title:</strong> {{ paper_1.title }}</p>
+        <p><strong>Authors:</strong> {{ paper_1.authors }}</p>
+        <p><strong>Year:</strong> {{ paper_1.year }}</p>
+        <p><strong>Journal:</strong> {{ paper_1.journal }}</p>
+        <p><strong>Comparison label:</strong> {{ paper_1.comparison_label }}</p>
+        <p><strong>Endpoint name:</strong> {{ paper_1.endpoint_name }}</p>
+        <p><strong>KM figure source:</strong> {{ paper_1.figure_status }}</p>
+        {% if paper_1.image_url %}
+        <img src="{{ paper_1.image_url }}" alt="Paper 1 KM figure preview" class="uploaded-image" />
+        {% else %}
+        <div class="placeholder-figure">Paper 1 KM figure placeholder (uploaded/cached hookup ready)</div>
+        {% endif %}
+      </section>
+
+      <section class="result-card">
+        <h2>Paper 2 (B vs C or C vs B)</h2>
+        <p><strong>Title:</strong> {{ paper_2.title }}</p>
+        <p><strong>Authors:</strong> {{ paper_2.authors }}</p>
+        <p><strong>Year:</strong> {{ paper_2.year }}</p>
+        <p><strong>Journal:</strong> {{ paper_2.journal }}</p>
+        <p><strong>Comparison label:</strong> {{ paper_2.comparison_label }}</p>
+        <p><strong>Endpoint name:</strong> {{ paper_2.endpoint_name }}</p>
+        <p><strong>KM figure source:</strong> {{ paper_2.figure_status }}</p>
+        {% if paper_2.image_url %}
+        <img src="{{ paper_2.image_url }}" alt="Paper 2 KM figure preview" class="uploaded-image" />
+        {% else %}
+        <div class="placeholder-figure">Paper 2 KM figure placeholder (uploaded/cached hookup ready)</div>
+        {% endif %}
+      </section>
+
+      <section class="result-card compact-result-card">
+        <h2>Anchored Indirect Estimate (A vs C)</h2>
+        <p><strong>Shared comparator:</strong> {{ shared_comparator }}</p>
+        <p><strong>Status:</strong> {{ anchored_result.status }}</p>
+        <p><strong>Estimate:</strong> {{ anchored_result.estimate }}</p>
+        <p><strong>95% CI:</strong> {{ anchored_result.confidence_interval }}</p>
+        <p><strong>p-value:</strong> {{ anchored_result.p_value }}</p>
+        <p class="small-note">Placeholder-only card. Math wiring is the next step.</p>
+      </section>
+    </main>
+  </body>
+</html>
