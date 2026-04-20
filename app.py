@@ -1,6 +1,7 @@
-from math import erfc, sqrt
+from math import erfc, exp, log, sqrt
 from pathlib import Path
 import json
+import re
 from itertools import combinations
 
 from dotenv import load_dotenv
@@ -46,18 +47,33 @@ def is_allowed_file(filename: str) -> bool:
 def parse_survival_records(raw_text: str, group_label: str) -> list[dict[str, float | int]]:
     lines = raw_text.splitlines()
     records: list[dict[str, float | int]] = []
+    comma_pattern = re.compile(r"^\s*([^,\s]+)\s*,\s*([^,\s]+)\s*$")
+    whitespace_pattern = re.compile(r"^\s*(\S+)\s+(\S+)\s*$")
+    zero_width_pattern = re.compile(r"[\u200B-\u200D\u2060\uFEFF]")
+    punctuation_translation = str.maketrans({"，": ",", "、": ","})
+    whitespace_translation = str.maketrans(
+        {
+            "\u3000": " ",  # ideographic/full-width space
+            "\u00A0": " ",  # non-breaking space
+            "\t": " ",
+        }
+    )
 
     for line_index, raw_line in enumerate(lines, start=1):
-        line = raw_line.strip()
+        line = zero_width_pattern.sub("", raw_line)
+        line = line.translate(punctuation_translation)
+        line = line.translate(whitespace_translation)
+        line = line.strip()
         if not line:
             continue
 
-        normalized = line.replace(",", " ")
-        parts = [part for part in normalized.split() if part]
-        if len(parts) != 2:
+        match = comma_pattern.match(line) or whitespace_pattern.match(line)
+        if not match:
             raise ValueError(
-                f"{group_label}, line {line_index}: expected exactly two values (time and event)."
+                f"{group_label}, line {line_index}: expected 'time,event' or 'time event'. "
+                "Full-width punctuation/spaces may need normalization."
             )
+        parts = [match.group(1), match.group(2)]
 
         time_text, event_text = parts
         try:
@@ -321,6 +337,72 @@ def _save_cached_extraction(image_hash: str, payload: dict) -> None:
     _cache_path_for_hash(image_hash).write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _list_cached_hashes() -> list[str]:
+    return sorted(path.stem for path in app.config["CACHE_FOLDER"].glob("*.json"))
+
+
+def _uploaded_image_url_for_hash(image_hash: str) -> str | None:
+    for upload_path in app.config["UPLOAD_FOLDER"].iterdir():
+        if not upload_path.is_file():
+            continue
+        if upload_path.suffix.lower().lstrip(".") not in app.config["ALLOWED_EXTENSIONS"]:
+            continue
+        try:
+            if image_sha256(upload_path) == image_hash:
+                return url_for("uploaded_file", filename=upload_path.name)
+        except OSError:
+            continue
+    return None
+
+
+def _derive_cached_effect_estimate(payload: dict, comparison_label: str) -> dict[str, float | str]:
+    from lifelines import CoxPHFitter
+    import pandas as pd
+
+    left, right = _parse_comparison_label(comparison_label)
+    canonical_groups = payload.get("canonical_reconstruction", {}).get("groups", [])
+    if not isinstance(canonical_groups, list) or not canonical_groups:
+        raise ValueError("Cached payload is missing canonical reconstructed groups.")
+
+    group_records: dict[str, list[dict]] = {}
+    for group in canonical_groups:
+        group_name = str(group.get("group_name", "")).strip()
+        records = group.get("records", [])
+        if group_name:
+            group_records[group_name] = records if isinstance(records, list) else []
+
+    if left not in group_records or right not in group_records:
+        raise ValueError(
+            f"Cached payload does not contain both groups required by '{comparison_label}'. "
+            f"Available groups: {', '.join(sorted(group_records.keys())) or 'none'}."
+        )
+
+    rows = []
+    for row in group_records[left]:
+        rows.append({"duration": float(row["time"]), "event": int(row["event"]), "arm_left": 1})
+    for row in group_records[right]:
+        rows.append({"duration": float(row["time"]), "event": int(row["event"]), "arm_left": 0})
+
+    if not rows:
+        raise ValueError("Cached payload has no reconstructed records for the requested comparison.")
+
+    dataframe = pd.DataFrame(rows)
+    cox = CoxPHFitter()
+    cox.fit(dataframe, duration_col="duration", event_col="event", formula="arm_left")
+
+    hr = float(cox.hazard_ratios_["arm_left"])
+    ci_table = cox.confidence_intervals_
+    lower_col = next((column for column in ci_table.columns if "lower" in str(column).lower()), None)
+    upper_col = next((column for column in ci_table.columns if "upper" in str(column).lower()), None)
+    if lower_col is None or upper_col is None:
+        raise ValueError("Unable to read confidence interval columns from cached Cox model output.")
+
+    ci_lower = exp(float(ci_table.loc["arm_left", lower_col]))
+    ci_upper = exp(float(ci_table.loc["arm_left", upper_col]))
+    _compute_log_hr_and_se(hr, ci_lower, ci_upper)
+    return {"hr": hr, "ci_lower": ci_lower, "ci_upper": ci_upper, "comparison_label": f"{left} vs {right}"}
+
+
 def _build_auto_logrank(payload: dict) -> dict:
     canonical = payload.get("canonical_reconstruction", {})
     canonical_groups = canonical.get("groups", [])
@@ -452,9 +534,326 @@ def unique_ordered_strings(values: list[str]) -> list[str]:
     return out
 
 
+def _parse_comparison_label(raw_label: str) -> tuple[str, str]:
+    label = " ".join(raw_label.strip().split())
+    if " vs " not in label:
+        raise ValueError("Comparison labels must use the format 'Treatment1 vs Treatment2'.")
+    left, right = label.split(" vs ", 1)
+    if not left or not right:
+        raise ValueError("Comparison labels must include both sides around 'vs'.")
+    return left.strip(), right.strip()
+
+
+def _compute_log_hr_and_se(hr: float, ci_lower: float, ci_upper: float) -> tuple[float, float]:
+    if hr <= 0 or ci_lower <= 0 or ci_upper <= 0:
+        raise ValueError("HR and CI values must be positive numbers.")
+    if ci_lower >= ci_upper:
+        raise ValueError("Lower CI must be smaller than upper CI.")
+
+    log_hr = log(hr)
+    se = (log(ci_upper) - log(ci_lower)) / (2 * 1.96)
+    if se <= 0:
+        raise ValueError("Unable to compute a positive standard error from the provided CI.")
+    return log_hr, se
+
+
+def _normalize_to_comparator(
+    left: str,
+    right: str,
+    log_hr: float,
+    comparator: str,
+) -> tuple[str, float, str]:
+    if left == comparator:
+        return right, -log_hr, f"{left} vs {right} -> {right} vs {left} (inverted)"
+    if right == comparator:
+        return left, log_hr, f"{left} vs {right} -> {left} vs {right} (already aligned)"
+    raise ValueError("Unsupported direction specification: comparison does not include the shared comparator.")
+
+
+def _run_anchored_indirect_comparison(paper_1: dict, paper_2: dict) -> dict:
+    endpoint_1 = paper_1["endpoint_name"].strip()
+    endpoint_2 = paper_2["endpoint_name"].strip()
+    if endpoint_1.lower() != endpoint_2.lower():
+        raise ValueError("Endpoint mismatch between Paper 1 and Paper 2.")
+
+    left_1, right_1 = _parse_comparison_label(paper_1["comparison_label"])
+    left_2, right_2 = _parse_comparison_label(paper_2["comparison_label"])
+
+    common_treatments = {left_1, right_1}.intersection({left_2, right_2})
+    if len(common_treatments) != 1:
+        raise ValueError("No common comparator could be identified across the two comparisons.")
+    comparator = common_treatments.pop()
+
+    log_hr_1, se_1 = _compute_log_hr_and_se(paper_1["hr"], paper_1["ci_lower"], paper_1["ci_upper"])
+    log_hr_2, se_2 = _compute_log_hr_and_se(paper_2["hr"], paper_2["ci_lower"], paper_2["ci_upper"])
+
+    treatment_a, normalized_log_hr_1, step_1 = _normalize_to_comparator(left_1, right_1, log_hr_1, comparator)
+    treatment_c, normalized_log_hr_2, step_2 = _normalize_to_comparator(left_2, right_2, log_hr_2, comparator)
+
+    if treatment_a == treatment_c:
+        raise ValueError("Unsupported direction specification: both comparisons map to the same non-comparator treatment.")
+
+    indirect_log_hr = normalized_log_hr_1 - normalized_log_hr_2
+    indirect_se = sqrt(se_1**2 + se_2**2)
+    if indirect_se <= 0:
+        raise ValueError("Unable to compute a positive indirect standard error.")
+
+    z_score = indirect_log_hr / indirect_se
+    p_value = erfc(abs(z_score) / sqrt(2))
+    lower_log = indirect_log_hr - 1.96 * indirect_se
+    upper_log = indirect_log_hr + 1.96 * indirect_se
+
+    indirect_hr = exp(indirect_log_hr)
+    ci_lower = exp(lower_log)
+    ci_upper = exp(upper_log)
+
+    interpretation = (
+        f"Evidence suggests a difference between {treatment_a} and {treatment_c} (p < 0.05)."
+        if p_value < 0.05
+        else f"No clear difference detected between {treatment_a} and {treatment_c} (p >= 0.05)."
+    )
+
+    return {
+        "endpoint_name": endpoint_1,
+        "comparator": comparator,
+        "treatment_a": treatment_a,
+        "treatment_c": treatment_c,
+        "normalization_steps": [step_1, step_2],
+        "paper_1_normalized_label": f"{treatment_a} vs {comparator}",
+        "paper_2_normalized_label": f"{treatment_c} vs {comparator}",
+        "paper_1_normalized_log_hr": normalized_log_hr_1,
+        "paper_2_normalized_log_hr": normalized_log_hr_2,
+        "paper_1_se": se_1,
+        "paper_2_se": se_2,
+        "indirect_log_hr": indirect_log_hr,
+        "indirect_se": indirect_se,
+        "indirect_hr": indirect_hr,
+        "indirect_ci_lower": ci_lower,
+        "indirect_ci_upper": ci_upper,
+        "z_score": z_score,
+        "p_value": p_value,
+        "interpretation": interpretation,
+    }
+
+
+def _build_indirect_quality_panel(paper_1: dict, paper_2: dict, effect_source_available: bool) -> dict:
+    endpoint_matched = paper_1["endpoint_name"].strip().lower() == paper_2["endpoint_name"].strip().lower()
+
+    comparator_identified = False
+    directions_normalized = False
+    comparator = ""
+    quality_reasons: list[str] = []
+
+    try:
+        left_1, right_1 = _parse_comparison_label(paper_1["comparison_label"])
+        left_2, right_2 = _parse_comparison_label(paper_2["comparison_label"])
+        overlap = {left_1, right_1}.intersection({left_2, right_2})
+        comparator_identified = len(overlap) == 1
+        if comparator_identified:
+            comparator = next(iter(overlap))
+            _normalize_to_comparator(left_1, right_1, 0.0, comparator)
+            _normalize_to_comparator(left_2, right_2, 0.0, comparator)
+            directions_normalized = True
+    except ValueError:
+        comparator_identified = False
+        directions_normalized = False
+
+    if not endpoint_matched:
+        quality_reasons.append("Endpoint mismatch between the two direct comparisons.")
+    if not comparator_identified:
+        quality_reasons.append("Shared comparator is ambiguous or missing.")
+    if not directions_normalized:
+        quality_reasons.append("Treatment directions could not be normalized to a shared comparator.")
+    if not effect_source_available:
+        quality_reasons.append("One or both direct effects are unavailable from the selected source.")
+
+    any_cached = paper_1.get("source_mode") == "cached" or paper_2.get("source_mode") == "cached"
+    if not comparator_identified or not endpoint_matched:
+        quality_label = "LOW"
+    elif any_cached:
+        quality_label = "MEDIUM"
+    else:
+        quality_label = "HIGH"
+
+    return {
+        "checks": [
+            {"label": "Shared comparator identified", "passed": comparator_identified},
+            {"label": "Endpoint matched", "passed": endpoint_matched},
+            {"label": "Treatment direction normalized", "passed": directions_normalized},
+            {"label": "Effect source available", "passed": effect_source_available},
+        ],
+        "quality_label": quality_label,
+        "comparator": comparator or "N/A",
+        "reasons": quality_reasons,
+        "is_exploratory": quality_label == "MEDIUM",
+        "suppress_estimate": quality_label == "LOW",
+    }
+
+
 @app.route("/")
 def home():
     return render_template("index.html", manual_group_a="", manual_group_b="")
+
+
+@app.route("/indirect-comparison", methods=["GET", "POST"])
+def indirect_comparison():
+    latest_upload = session.get("latest_upload")
+    latest_upload_hash = None
+    if latest_upload:
+        upload_path = app.config["UPLOAD_FOLDER"] / latest_upload["filename"]
+        if upload_path.exists():
+            latest_upload_hash = image_sha256(upload_path)
+    cached_hashes = _list_cached_hashes()
+
+    paper_1 = {
+        "title": "Paper 1 title placeholder",
+        "authors": "First author et al.",
+        "year": "YYYY",
+        "journal": "Journal name",
+        "comparison_label": "A vs B",
+        "endpoint_name": "Overall Survival",
+        "figure_status": "No cached KM figure selected for this direct comparison.",
+        "image_url": None,
+        "hr": 0.82,
+        "ci_lower": 0.68,
+        "ci_upper": 0.99,
+        "source_mode": "reported",
+        "cached_hash": latest_upload_hash or "",
+        "provenance_note": "Article-reported effect (HR/95% CI entered manually).",
+    }
+    paper_2 = {
+        "title": "Paper 2 title placeholder",
+        "authors": "First author et al.",
+        "year": "YYYY",
+        "journal": "Journal name",
+        "comparison_label": "C vs B",
+        "endpoint_name": "Overall Survival",
+        "figure_status": "No cached KM figure selected for this direct comparison.",
+        "image_url": None,
+        "hr": 1.10,
+        "ci_lower": 0.92,
+        "ci_upper": 1.31,
+        "source_mode": "reported",
+        "cached_hash": "",
+        "provenance_note": "Article-reported effect (HR/95% CI entered manually).",
+    }
+
+    errors: list[str] = []
+    anchored_result = None
+    quality_panel = _build_indirect_quality_panel(paper_1, paper_2, effect_source_available=True)
+
+    if request.method == "POST":
+        effect_source_available = True
+        for paper_label, paper in (("paper_1", paper_1), ("paper_2", paper_2)):
+            paper["title"] = request.form.get(f"{paper_label}_title", paper["title"]).strip() or paper["title"]
+            paper["authors"] = request.form.get(f"{paper_label}_authors", paper["authors"]).strip() or paper["authors"]
+            paper["year"] = request.form.get(f"{paper_label}_year", paper["year"]).strip() or paper["year"]
+            paper["journal"] = request.form.get(f"{paper_label}_journal", paper["journal"]).strip() or paper["journal"]
+            paper["comparison_label"] = request.form.get(
+                f"{paper_label}_comparison_label", paper["comparison_label"]
+            ).strip()
+            paper["endpoint_name"] = request.form.get(f"{paper_label}_endpoint_name", paper["endpoint_name"]).strip()
+            paper["source_mode"] = request.form.get(f"{paper_label}_source_mode", "reported").strip()
+            paper["cached_hash"] = request.form.get(f"{paper_label}_cached_hash", "").strip()
+
+            if paper["source_mode"] not in {"reported", "cached"}:
+                errors.append(f"{paper_label.replace('_', ' ').title()}: unsupported source mode.")
+                effect_source_available = False
+                continue
+
+            if paper["source_mode"] == "cached":
+                if not paper["cached_hash"]:
+                    errors.append(
+                        f"{paper_label.replace('_', ' ').title()}: choose a cached extraction hash for KM-derived mode."
+                    )
+                    effect_source_available = False
+                    continue
+                cached_payload = _load_cached_extraction(paper["cached_hash"])
+                if cached_payload is None:
+                    errors.append(
+                        f"{paper_label.replace('_', ' ').title()}: no cached extraction found for hash "
+                        f"'{paper['cached_hash']}'."
+                    )
+                    effect_source_available = False
+                    continue
+                try:
+                    cached_effect = _derive_cached_effect_estimate(cached_payload, paper["comparison_label"])
+                    paper["hr"] = float(cached_effect["hr"])
+                    paper["ci_lower"] = float(cached_effect["ci_lower"])
+                    paper["ci_upper"] = float(cached_effect["ci_upper"])
+                except (ValueError, KeyError, TypeError) as exc:
+                    errors.append(f"{paper_label.replace('_', ' ').title()}: {exc}")
+                    effect_source_available = False
+                    continue
+                paper["provenance_note"] = (
+                    f"Derived from cached KM reconstruction (cache hash: {paper['cached_hash']}). "
+                    "No live API call was used."
+                )
+                paper["image_url"] = _uploaded_image_url_for_hash(paper["cached_hash"])
+                if paper["image_url"]:
+                    paper["figure_status"] = f"Preview linked to cached hash {paper['cached_hash']}."
+                else:
+                    paper["figure_status"] = (
+                        f"Cached estimate loaded from hash {paper['cached_hash']}. "
+                        "No matching uploaded KM image preview is available."
+                    )
+                continue
+
+            numeric_fields = (
+                ("hr", "HR"),
+                ("ci_lower", "95% CI lower"),
+                ("ci_upper", "95% CI upper"),
+            )
+            for field_key, field_label in numeric_fields:
+                raw_value = request.form.get(f"{paper_label}_{field_key}", str(paper[field_key])).strip()
+                try:
+                    paper[field_key] = float(raw_value)
+                except ValueError:
+                    errors.append(
+                        f"{paper_label.replace('_', ' ').title()} {field_label}: please enter a numeric value "
+                        "(examples: 0.6, 0.82, 1, 1.25, 0.811001)."
+                    )
+                    effect_source_available = False
+            paper["provenance_note"] = "Article-reported effect (HR/95% CI entered manually)."
+            paper["image_url"] = None
+            paper["figure_status"] = "No cached KM figure selected for this direct comparison."
+
+        quality_panel = _build_indirect_quality_panel(paper_1, paper_2, effect_source_available)
+
+        if not errors:
+            if quality_panel["suppress_estimate"]:
+                reasons = quality_panel["reasons"] or [
+                    "Indirect estimate suppressed due to low-quality assumptions."
+                ]
+                errors.append(
+                    "Indirect estimate suppressed (quality LOW): "
+                    + " ".join(reasons)
+                )
+            else:
+                try:
+                    anchored_result = _run_anchored_indirect_comparison(paper_1, paper_2)
+                    anchored_result["provenance_summary"] = (
+                        f"Paper 1 source: {paper_1['provenance_note']} | "
+                        f"Paper 2 source: {paper_2['provenance_note']}"
+                    )
+                    if quality_panel["is_exploratory"]:
+                        anchored_result["quality_note"] = (
+                            "Quality is MEDIUM because one or both direct effects are KM-cache derived; "
+                            "interpret this indirect estimate as exploratory."
+                        )
+                except ValueError as exc:
+                    errors.append(str(exc))
+
+    return render_template(
+        "indirect_comparison.html",
+        paper_1=paper_1,
+        paper_2=paper_2,
+        shared_comparator=anchored_result["comparator"] if anchored_result else "Pending",
+        anchored_result=anchored_result,
+        indirect_errors=errors,
+        cached_hashes=cached_hashes,
+        quality_panel=quality_panel,
+    )
 
 
 @app.route("/upload", methods=["POST"])

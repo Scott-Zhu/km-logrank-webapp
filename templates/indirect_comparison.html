@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Indirect Comparison | KM Log-rank Web App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Indirect Comparison</h1>
+      <p><span class="badge-extra">Additional Function</span></p>
+      <p class="small-note"><strong>Extra-credit feature:</strong> Anchored indirect comparison module for grading demonstration.</p>
+      <p><a href="{{ url_for('home') }}">Back to home</a></p>
+      <section class="result-card">
+        <h2>How this works</h2>
+        <ul>
+          <li>Enter two direct comparisons that share one comparator treatment (for example, A vs B and C vs B).</li>
+          <li>The app normalizes directions and computes the anchored indirect effect for <strong>A vs C</strong> using Bucher-style logic.</li>
+          <li>Each direct effect can come from either <strong>article-reported HR/CI</strong> or a <strong>cached KM-derived estimate</strong>.</li>
+        </ul>
+      </section>
+      {% if indirect_errors %}
+      <section aria-live="polite" class="messages">
+        {% for message in indirect_errors %}
+        <p class="message message-error">{{ message }}</p>
+        {% endfor %}
+      </section>
+      {% endif %}
+      <section class="result-card">
+        <h2>Assumptions & Reliability</h2>
+        <p><strong>Quality label:</strong> <span class="quality-label quality-{{ quality_panel.quality_label|lower }}">{{ quality_panel.quality_label }}</span></p>
+        <ul>
+          {% for check in quality_panel.checks %}
+          <li>
+            <strong>{{ "PASS" if check.passed else "FAIL" }}</strong> — {{ check.label }}
+          </li>
+          {% endfor %}
+        </ul>
+        {% if quality_panel.reasons %}
+        <p class="small-note"><strong>Notes:</strong> {{ quality_panel.reasons|join(" ") }}</p>
+        {% endif %}
+        <p class="small-note"><strong>Caution:</strong> This quality label reflects app-level structural checks, not a full formal cross-trial comparability assessment.</p>
+        {% if quality_panel.quality_label == "LOW" %}
+        <p class="small-note"><strong>Estimate policy:</strong> Final indirect estimate is suppressed because quality is LOW.</p>
+        {% elif quality_panel.quality_label == "MEDIUM" %}
+        <p class="small-note"><strong>Estimate policy:</strong> Final indirect estimate is shown, but marked exploratory.</p>
+        {% else %}
+        <p class="small-note"><strong>Estimate policy:</strong> Final indirect estimate is shown (quality HIGH).</p>
+        {% endif %}
+      </section>
+
+      <form action="{{ url_for('indirect_comparison') }}" method="post">
+
+      <section class="result-card">
+        <h2>Direct Comparison 1</h2>
+        <label for="paper_1_title">Title</label>
+        <input id="paper_1_title" name="paper_1_title" type="text" value="{{ paper_1.title }}" />
+        <label for="paper_1_authors">Authors</label>
+        <input id="paper_1_authors" name="paper_1_authors" type="text" value="{{ paper_1.authors }}" />
+        <label for="paper_1_year">Year</label>
+        <input id="paper_1_year" name="paper_1_year" type="text" value="{{ paper_1.year }}" />
+        <label for="paper_1_journal">Journal</label>
+        <input id="paper_1_journal" name="paper_1_journal" type="text" value="{{ paper_1.journal }}" />
+        <label for="paper_1_comparison_label">Comparison label</label>
+        <input id="paper_1_comparison_label" name="paper_1_comparison_label" type="text" value="{{ paper_1.comparison_label }}" />
+        <label for="paper_1_endpoint_name">Endpoint name</label>
+        <input id="paper_1_endpoint_name" name="paper_1_endpoint_name" type="text" value="{{ paper_1.endpoint_name }}" />
+        <label for="paper_1_source_mode">Effect source</label>
+        <select id="paper_1_source_mode" name="paper_1_source_mode">
+          <option value="reported" {% if paper_1.source_mode == "reported" %}selected{% endif %}>Article-reported HR/CI</option>
+          <option value="cached" {% if paper_1.source_mode == "cached" %}selected{% endif %}>Cached KM-derived estimate</option>
+        </select>
+        <label for="paper_1_cached_hash">Cached extraction hash (only for cached mode)</label>
+        <input id="paper_1_cached_hash" name="paper_1_cached_hash" type="text" list="cached-hashes" value="{{ paper_1.cached_hash }}" placeholder="paste cache hash" />
+        <label for="paper_1_hr">HR</label>
+        <input id="paper_1_hr" name="paper_1_hr" type="text" inputmode="decimal" placeholder="e.g., 0.82" value="{{ paper_1.hr }}" />
+        <label for="paper_1_ci_lower">95% CI lower</label>
+        <input id="paper_1_ci_lower" name="paper_1_ci_lower" type="text" inputmode="decimal" placeholder="e.g., 0.68" value="{{ paper_1.ci_lower }}" />
+        <label for="paper_1_ci_upper">95% CI upper</label>
+        <input id="paper_1_ci_upper" name="paper_1_ci_upper" type="text" inputmode="decimal" placeholder="e.g., 0.99" value="{{ paper_1.ci_upper }}" />
+        <p class="small-note"><strong>Provenance:</strong> {{ paper_1.provenance_note }}</p>
+        <p><strong>KM figure source:</strong> {{ paper_1.figure_status }}</p>
+        {% if paper_1.image_url %}
+        <img src="{{ paper_1.image_url }}" alt="Paper 1 KM figure preview" class="uploaded-image" />
+        {% else %}
+        <p class="small-note">No cached KM figure selected for this direct comparison.</p>
+        {% endif %}
+      </section>
+
+      <section class="result-card">
+        <h2>Direct Comparison 2</h2>
+        <label for="paper_2_title">Title</label>
+        <input id="paper_2_title" name="paper_2_title" type="text" value="{{ paper_2.title }}" />
+        <label for="paper_2_authors">Authors</label>
+        <input id="paper_2_authors" name="paper_2_authors" type="text" value="{{ paper_2.authors }}" />
+        <label for="paper_2_year">Year</label>
+        <input id="paper_2_year" name="paper_2_year" type="text" value="{{ paper_2.year }}" />
+        <label for="paper_2_journal">Journal</label>
+        <input id="paper_2_journal" name="paper_2_journal" type="text" value="{{ paper_2.journal }}" />
+        <label for="paper_2_comparison_label">Comparison label</label>
+        <input id="paper_2_comparison_label" name="paper_2_comparison_label" type="text" value="{{ paper_2.comparison_label }}" />
+        <label for="paper_2_endpoint_name">Endpoint name</label>
+        <input id="paper_2_endpoint_name" name="paper_2_endpoint_name" type="text" value="{{ paper_2.endpoint_name }}" />
+        <label for="paper_2_source_mode">Effect source</label>
+        <select id="paper_2_source_mode" name="paper_2_source_mode">
+          <option value="reported" {% if paper_2.source_mode == "reported" %}selected{% endif %}>Article-reported HR/CI</option>
+          <option value="cached" {% if paper_2.source_mode == "cached" %}selected{% endif %}>Cached KM-derived estimate</option>
+        </select>
+        <label for="paper_2_cached_hash">Cached extraction hash (only for cached mode)</label>
+        <input id="paper_2_cached_hash" name="paper_2_cached_hash" type="text" list="cached-hashes" value="{{ paper_2.cached_hash }}" placeholder="paste cache hash" />
+        <label for="paper_2_hr">HR</label>
+        <input id="paper_2_hr" name="paper_2_hr" type="text" inputmode="decimal" placeholder="e.g., 1.10" value="{{ paper_2.hr }}" />
+        <label for="paper_2_ci_lower">95% CI lower</label>
+        <input id="paper_2_ci_lower" name="paper_2_ci_lower" type="text" inputmode="decimal" placeholder="e.g., 0.92" value="{{ paper_2.ci_lower }}" />
+        <label for="paper_2_ci_upper">95% CI upper</label>
+        <input id="paper_2_ci_upper" name="paper_2_ci_upper" type="text" inputmode="decimal" placeholder="e.g., 1.31" value="{{ paper_2.ci_upper }}" />
+        <p class="small-note"><strong>Provenance:</strong> {{ paper_2.provenance_note }}</p>
+        <p><strong>KM figure source:</strong> {{ paper_2.figure_status }}</p>
+        {% if paper_2.image_url %}
+        <img src="{{ paper_2.image_url }}" alt="Paper 2 KM figure preview" class="uploaded-image" />
+        {% else %}
+        <p class="small-note">No cached KM figure selected for this direct comparison.</p>
+        {% endif %}
+      </section>
+
+      <section class="result-card compact-result-card">
+        <h2>Anchored Indirect Estimate (A vs C)</h2>
+        <button type="submit">Compute anchored indirect comparison</button>
+        {% if anchored_result %}
+        <p class="message message-success provenance-highlight"><strong>Provenance summary:</strong> {{ anchored_result.provenance_summary }}</p>
+        <p><strong>Endpoint:</strong> {{ anchored_result.endpoint_name }}</p>
+        <p><strong>Shared comparator:</strong> {{ anchored_result.comparator }}</p>
+        <p><strong>Normalization step 1:</strong> {{ anchored_result.normalization_steps[0] }}</p>
+        <p><strong>Normalization step 2:</strong> {{ anchored_result.normalization_steps[1] }}</p>
+        <p><strong>Normalized directions:</strong> {{ anchored_result.paper_1_normalized_label }} and {{ anchored_result.paper_2_normalized_label }}</p>
+        <p><strong>Indirect HR ({{ anchored_result.treatment_a }} vs {{ anchored_result.treatment_c }}):</strong> {{ "%.4f"|format(anchored_result.indirect_hr) }}</p>
+        <p><strong>95% CI:</strong> {{ "%.4f"|format(anchored_result.indirect_ci_lower) }} to {{ "%.4f"|format(anchored_result.indirect_ci_upper) }}</p>
+        <p><strong>z-score:</strong> {{ "%.4f"|format(anchored_result.z_score) }}</p>
+        <p><strong>p-value:</strong> {{ "%.6f"|format(anchored_result.p_value) }}</p>
+        <p><strong>Interpretation:</strong> {{ anchored_result.interpretation }}</p>
+        {% if anchored_result.quality_note %}
+        <p class="message message-warning"><strong>Exploratory result:</strong> {{ anchored_result.quality_note }}</p>
+        {% endif %}
+        {% else %}
+        <p class="small-note">
+          {% if quality_panel.quality_label == "LOW" %}
+          <span class="message message-error low-quality-block">Estimate suppressed due to LOW quality assumptions. Resolve the failed checks above to enable calculation.</span>
+          {% else %}
+          Enter two direct comparisons, choose sources, and click compute.
+          {% endif %}
+        </p>
+        {% endif %}
+      </section>
+      <section class="result-card">
+        <h2>Interpretation note</h2>
+        <p class="small-note">
+          A non-significant indirect result means <strong>no clear indirect difference detected</strong> under these inputs.
+          It does <strong>not</strong> prove treatment equivalence.
+        </p>
+      </section>
+      <datalist id="cached-hashes">
+        {% for hash_value in cached_hashes %}
+        <option value="{{ hash_value }}"></option>
+        {% endfor %}
+      </datalist>
+      </form>
+    </main>
+  </body>
+</html>
