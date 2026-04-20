@@ -603,12 +603,20 @@ def indirect_comparison():
             ).strip()
             paper["endpoint_name"] = request.form.get(f"{paper_label}_endpoint_name", paper["endpoint_name"]).strip()
 
-            try:
-                paper["hr"] = float(request.form.get(f"{paper_label}_hr", str(paper["hr"])))
-                paper["ci_lower"] = float(request.form.get(f"{paper_label}_ci_lower", str(paper["ci_lower"])))
-                paper["ci_upper"] = float(request.form.get(f"{paper_label}_ci_upper", str(paper["ci_upper"])))
-            except ValueError:
-                errors.append(f"{paper_label.replace('_', ' ').title()}: HR and CI fields must be numeric.")
+            numeric_fields = (
+                ("hr", "HR"),
+                ("ci_lower", "95% CI lower"),
+                ("ci_upper", "95% CI upper"),
+            )
+            for field_key, field_label in numeric_fields:
+                raw_value = request.form.get(f"{paper_label}_{field_key}", str(paper[field_key])).strip()
+                try:
+                    paper[field_key] = float(raw_value)
+                except ValueError:
+                    errors.append(
+                        f"{paper_label.replace('_', ' ').title()} {field_label}: please enter a numeric value "
+                        "(examples: 0.6, 0.82, 1, 1.25, 0.811001)."
+                    )
 
         if not errors:
             try:
