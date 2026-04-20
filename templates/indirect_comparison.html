@@ -14,15 +14,36 @@
         Extra-credit page scaffold for anchored indirect comparison (A vs C) using two article-based comparisons with shared comparator {{ shared_comparator }}.
       </p>
       <p><a href="{{ url_for('home') }}">Back to home</a></p>
+      {% if indirect_errors %}
+      <section aria-live="polite" class="messages">
+        {% for message in indirect_errors %}
+        <p class="message message-error">{{ message }}</p>
+        {% endfor %}
+      </section>
+      {% endif %}
+
+      <form action="{{ url_for('indirect_comparison') }}" method="post">
 
       <section class="result-card">
         <h2>Paper 1 (A vs B)</h2>
-        <p><strong>Title:</strong> {{ paper_1.title }}</p>
-        <p><strong>Authors:</strong> {{ paper_1.authors }}</p>
-        <p><strong>Year:</strong> {{ paper_1.year }}</p>
-        <p><strong>Journal:</strong> {{ paper_1.journal }}</p>
-        <p><strong>Comparison label:</strong> {{ paper_1.comparison_label }}</p>
-        <p><strong>Endpoint name:</strong> {{ paper_1.endpoint_name }}</p>
+        <label for="paper_1_title">Title</label>
+        <input id="paper_1_title" name="paper_1_title" type="text" value="{{ paper_1.title }}" />
+        <label for="paper_1_authors">Authors</label>
+        <input id="paper_1_authors" name="paper_1_authors" type="text" value="{{ paper_1.authors }}" />
+        <label for="paper_1_year">Year</label>
+        <input id="paper_1_year" name="paper_1_year" type="text" value="{{ paper_1.year }}" />
+        <label for="paper_1_journal">Journal</label>
+        <input id="paper_1_journal" name="paper_1_journal" type="text" value="{{ paper_1.journal }}" />
+        <label for="paper_1_comparison_label">Comparison label</label>
+        <input id="paper_1_comparison_label" name="paper_1_comparison_label" type="text" value="{{ paper_1.comparison_label }}" />
+        <label for="paper_1_endpoint_name">Endpoint name</label>
+        <input id="paper_1_endpoint_name" name="paper_1_endpoint_name" type="text" value="{{ paper_1.endpoint_name }}" />
+        <label for="paper_1_hr">HR</label>
+        <input id="paper_1_hr" name="paper_1_hr" type="number" step="0.001" min="0.000001" value="{{ paper_1.hr }}" />
+        <label for="paper_1_ci_lower">95% CI lower</label>
+        <input id="paper_1_ci_lower" name="paper_1_ci_lower" type="number" step="0.001" min="0.000001" value="{{ paper_1.ci_lower }}" />
+        <label for="paper_1_ci_upper">95% CI upper</label>
+        <input id="paper_1_ci_upper" name="paper_1_ci_upper" type="number" step="0.001" min="0.000001" value="{{ paper_1.ci_upper }}" />
         <p><strong>KM figure source:</strong> {{ paper_1.figure_status }}</p>
         {% if paper_1.image_url %}
         <img src="{{ paper_1.image_url }}" alt="Paper 1 KM figure preview" class="uploaded-image" />
@@ -33,12 +54,24 @@
 
       <section class="result-card">
         <h2>Paper 2 (B vs C or C vs B)</h2>
-        <p><strong>Title:</strong> {{ paper_2.title }}</p>
-        <p><strong>Authors:</strong> {{ paper_2.authors }}</p>
-        <p><strong>Year:</strong> {{ paper_2.year }}</p>
-        <p><strong>Journal:</strong> {{ paper_2.journal }}</p>
-        <p><strong>Comparison label:</strong> {{ paper_2.comparison_label }}</p>
-        <p><strong>Endpoint name:</strong> {{ paper_2.endpoint_name }}</p>
+        <label for="paper_2_title">Title</label>
+        <input id="paper_2_title" name="paper_2_title" type="text" value="{{ paper_2.title }}" />
+        <label for="paper_2_authors">Authors</label>
+        <input id="paper_2_authors" name="paper_2_authors" type="text" value="{{ paper_2.authors }}" />
+        <label for="paper_2_year">Year</label>
+        <input id="paper_2_year" name="paper_2_year" type="text" value="{{ paper_2.year }}" />
+        <label for="paper_2_journal">Journal</label>
+        <input id="paper_2_journal" name="paper_2_journal" type="text" value="{{ paper_2.journal }}" />
+        <label for="paper_2_comparison_label">Comparison label</label>
+        <input id="paper_2_comparison_label" name="paper_2_comparison_label" type="text" value="{{ paper_2.comparison_label }}" />
+        <label for="paper_2_endpoint_name">Endpoint name</label>
+        <input id="paper_2_endpoint_name" name="paper_2_endpoint_name" type="text" value="{{ paper_2.endpoint_name }}" />
+        <label for="paper_2_hr">HR</label>
+        <input id="paper_2_hr" name="paper_2_hr" type="number" step="0.001" min="0.000001" value="{{ paper_2.hr }}" />
+        <label for="paper_2_ci_lower">95% CI lower</label>
+        <input id="paper_2_ci_lower" name="paper_2_ci_lower" type="number" step="0.001" min="0.000001" value="{{ paper_2.ci_lower }}" />
+        <label for="paper_2_ci_upper">95% CI upper</label>
+        <input id="paper_2_ci_upper" name="paper_2_ci_upper" type="number" step="0.001" min="0.000001" value="{{ paper_2.ci_upper }}" />
         <p><strong>KM figure source:</strong> {{ paper_2.figure_status }}</p>
         {% if paper_2.image_url %}
         <img src="{{ paper_2.image_url }}" alt="Paper 2 KM figure preview" class="uploaded-image" />
@@ -49,13 +82,23 @@
 
       <section class="result-card compact-result-card">
         <h2>Anchored Indirect Estimate (A vs C)</h2>
-        <p><strong>Shared comparator:</strong> {{ shared_comparator }}</p>
-        <p><strong>Status:</strong> {{ anchored_result.status }}</p>
-        <p><strong>Estimate:</strong> {{ anchored_result.estimate }}</p>
-        <p><strong>95% CI:</strong> {{ anchored_result.confidence_interval }}</p>
-        <p><strong>p-value:</strong> {{ anchored_result.p_value }}</p>
-        <p class="small-note">Placeholder-only card. Math wiring is the next step.</p>
+        <button type="submit">Compute anchored indirect comparison</button>
+        {% if anchored_result %}
+        <p><strong>Endpoint:</strong> {{ anchored_result.endpoint_name }}</p>
+        <p><strong>Shared comparator:</strong> {{ anchored_result.comparator }}</p>
+        <p><strong>Normalization step 1:</strong> {{ anchored_result.normalization_steps[0] }}</p>
+        <p><strong>Normalization step 2:</strong> {{ anchored_result.normalization_steps[1] }}</p>
+        <p><strong>Normalized directions:</strong> {{ anchored_result.paper_1_normalized_label }} and {{ anchored_result.paper_2_normalized_label }}</p>
+        <p><strong>Indirect HR ({{ anchored_result.treatment_a }} vs {{ anchored_result.treatment_c }}):</strong> {{ "%.4f"|format(anchored_result.indirect_hr) }}</p>
+        <p><strong>95% CI:</strong> {{ "%.4f"|format(anchored_result.indirect_ci_lower) }} to {{ "%.4f"|format(anchored_result.indirect_ci_upper) }}</p>
+        <p><strong>z-score:</strong> {{ "%.4f"|format(anchored_result.z_score) }}</p>
+        <p><strong>p-value:</strong> {{ "%.6f"|format(anchored_result.p_value) }}</p>
+        <p><strong>Interpretation:</strong> {{ anchored_result.interpretation }}</p>
+        {% else %}
+        <p class="small-note">Enter article-provided HR + 95% CI values for both direct comparisons, then click compute.</p>
+        {% endif %}
       </section>
+      </form>
     </main>
   </body>
 </html>

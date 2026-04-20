@@ -1,4 +1,4 @@
-from math import erfc, sqrt
+from math import erfc, exp, log, sqrt
 from pathlib import Path
 import json
 from itertools import combinations
@@ -452,48 +452,177 @@ def unique_ordered_strings(values: list[str]) -> list[str]:
     return out
 
 
+def _parse_comparison_label(raw_label: str) -> tuple[str, str]:
+    label = " ".join(raw_label.strip().split())
+    if " vs " not in label:
+        raise ValueError("Comparison labels must use the format 'Treatment1 vs Treatment2'.")
+    left, right = label.split(" vs ", 1)
+    if not left or not right:
+        raise ValueError("Comparison labels must include both sides around 'vs'.")
+    return left.strip(), right.strip()
+
+
+def _compute_log_hr_and_se(hr: float, ci_lower: float, ci_upper: float) -> tuple[float, float]:
+    if hr <= 0 or ci_lower <= 0 or ci_upper <= 0:
+        raise ValueError("HR and CI values must be positive numbers.")
+    if ci_lower >= ci_upper:
+        raise ValueError("Lower CI must be smaller than upper CI.")
+
+    log_hr = log(hr)
+    se = (log(ci_upper) - log(ci_lower)) / (2 * 1.96)
+    if se <= 0:
+        raise ValueError("Unable to compute a positive standard error from the provided CI.")
+    return log_hr, se
+
+
+def _normalize_to_comparator(
+    left: str,
+    right: str,
+    log_hr: float,
+    comparator: str,
+) -> tuple[str, float, str]:
+    if left == comparator:
+        return right, -log_hr, f"{left} vs {right} -> {right} vs {left} (inverted)"
+    if right == comparator:
+        return left, log_hr, f"{left} vs {right} -> {left} vs {right} (already aligned)"
+    raise ValueError("Unsupported direction specification: comparison does not include the shared comparator.")
+
+
+def _run_anchored_indirect_comparison(paper_1: dict, paper_2: dict) -> dict:
+    endpoint_1 = paper_1["endpoint_name"].strip()
+    endpoint_2 = paper_2["endpoint_name"].strip()
+    if endpoint_1.lower() != endpoint_2.lower():
+        raise ValueError("Endpoint mismatch between Paper 1 and Paper 2.")
+
+    left_1, right_1 = _parse_comparison_label(paper_1["comparison_label"])
+    left_2, right_2 = _parse_comparison_label(paper_2["comparison_label"])
+
+    common_treatments = {left_1, right_1}.intersection({left_2, right_2})
+    if len(common_treatments) != 1:
+        raise ValueError("No common comparator could be identified across the two comparisons.")
+    comparator = common_treatments.pop()
+
+    log_hr_1, se_1 = _compute_log_hr_and_se(paper_1["hr"], paper_1["ci_lower"], paper_1["ci_upper"])
+    log_hr_2, se_2 = _compute_log_hr_and_se(paper_2["hr"], paper_2["ci_lower"], paper_2["ci_upper"])
+
+    treatment_a, normalized_log_hr_1, step_1 = _normalize_to_comparator(left_1, right_1, log_hr_1, comparator)
+    treatment_c, normalized_log_hr_2, step_2 = _normalize_to_comparator(left_2, right_2, log_hr_2, comparator)
+
+    if treatment_a == treatment_c:
+        raise ValueError("Unsupported direction specification: both comparisons map to the same non-comparator treatment.")
+
+    indirect_log_hr = normalized_log_hr_1 - normalized_log_hr_2
+    indirect_se = sqrt(se_1**2 + se_2**2)
+    if indirect_se <= 0:
+        raise ValueError("Unable to compute a positive indirect standard error.")
+
+    z_score = indirect_log_hr / indirect_se
+    p_value = erfc(abs(z_score) / sqrt(2))
+    lower_log = indirect_log_hr - 1.96 * indirect_se
+    upper_log = indirect_log_hr + 1.96 * indirect_se
+
+    indirect_hr = exp(indirect_log_hr)
+    ci_lower = exp(lower_log)
+    ci_upper = exp(upper_log)
+
+    interpretation = (
+        f"Evidence suggests a difference between {treatment_a} and {treatment_c} (p < 0.05)."
+        if p_value < 0.05
+        else f"No clear difference detected between {treatment_a} and {treatment_c} (p >= 0.05)."
+    )
+
+    return {
+        "endpoint_name": endpoint_1,
+        "comparator": comparator,
+        "treatment_a": treatment_a,
+        "treatment_c": treatment_c,
+        "normalization_steps": [step_1, step_2],
+        "paper_1_normalized_label": f"{treatment_a} vs {comparator}",
+        "paper_2_normalized_label": f"{treatment_c} vs {comparator}",
+        "paper_1_normalized_log_hr": normalized_log_hr_1,
+        "paper_2_normalized_log_hr": normalized_log_hr_2,
+        "paper_1_se": se_1,
+        "paper_2_se": se_2,
+        "indirect_log_hr": indirect_log_hr,
+        "indirect_se": indirect_se,
+        "indirect_hr": indirect_hr,
+        "indirect_ci_lower": ci_lower,
+        "indirect_ci_upper": ci_upper,
+        "z_score": z_score,
+        "p_value": p_value,
+        "interpretation": interpretation,
+    }
+
+
 @app.route("/")
 def home():
     return render_template("index.html", manual_group_a="", manual_group_b="")
 
 
-@app.route("/indirect-comparison")
+@app.route("/indirect-comparison", methods=["GET", "POST"])
 def indirect_comparison():
     latest_upload = session.get("latest_upload")
-    placeholder_paper_1 = {
+    paper_1 = {
         "title": "Paper 1 title placeholder",
         "authors": "First author et al.",
         "year": "YYYY",
         "journal": "Journal name",
         "comparison_label": "A vs B",
-        "endpoint_name": "Overall Survival (OS)",
+        "endpoint_name": "Overall Survival",
         "figure_status": "Uploaded/cached placeholder",
-        "image_url": (
-            url_for("uploaded_file", filename=latest_upload["filename"]) if latest_upload else None
-        ),
+        "image_url": url_for("uploaded_file", filename=latest_upload["filename"]) if latest_upload else None,
+        "hr": 0.82,
+        "ci_lower": 0.68,
+        "ci_upper": 0.99,
     }
-    placeholder_paper_2 = {
+    paper_2 = {
         "title": "Paper 2 title placeholder",
         "authors": "First author et al.",
         "year": "YYYY",
         "journal": "Journal name",
-        "comparison_label": "B vs C (or C vs B)",
-        "endpoint_name": "Overall Survival (OS)",
+        "comparison_label": "C vs B",
+        "endpoint_name": "Overall Survival",
         "figure_status": "Uploaded/cached placeholder",
         "image_url": None,
+        "hr": 1.10,
+        "ci_lower": 0.92,
+        "ci_upper": 1.31,
     }
+
+    errors: list[str] = []
+    anchored_result = None
+
+    if request.method == "POST":
+        for paper_label, paper in (("paper_1", paper_1), ("paper_2", paper_2)):
+            paper["title"] = request.form.get(f"{paper_label}_title", paper["title"]).strip() or paper["title"]
+            paper["authors"] = request.form.get(f"{paper_label}_authors", paper["authors"]).strip() or paper["authors"]
+            paper["year"] = request.form.get(f"{paper_label}_year", paper["year"]).strip() or paper["year"]
+            paper["journal"] = request.form.get(f"{paper_label}_journal", paper["journal"]).strip() or paper["journal"]
+            paper["comparison_label"] = request.form.get(
+                f"{paper_label}_comparison_label", paper["comparison_label"]
+            ).strip()
+            paper["endpoint_name"] = request.form.get(f"{paper_label}_endpoint_name", paper["endpoint_name"]).strip()
+
+            try:
+                paper["hr"] = float(request.form.get(f"{paper_label}_hr", str(paper["hr"])))
+                paper["ci_lower"] = float(request.form.get(f"{paper_label}_ci_lower", str(paper["ci_lower"])))
+                paper["ci_upper"] = float(request.form.get(f"{paper_label}_ci_upper", str(paper["ci_upper"])))
+            except ValueError:
+                errors.append(f"{paper_label.replace('_', ' ').title()}: HR and CI fields must be numeric.")
+
+        if not errors:
+            try:
+                anchored_result = _run_anchored_indirect_comparison(paper_1, paper_2)
+            except ValueError as exc:
+                errors.append(str(exc))
 
     return render_template(
         "indirect_comparison.html",
-        paper_1=placeholder_paper_1,
-        paper_2=placeholder_paper_2,
-        shared_comparator="B",
-        anchored_result={
-            "status": "Math not implemented yet",
-            "estimate": "Placeholder",
-            "confidence_interval": "Placeholder",
-            "p_value": "Placeholder",
-        },
+        paper_1=paper_1,
+        paper_2=paper_2,
+        shared_comparator=anchored_result["comparator"] if anchored_result else "Pending",
+        anchored_result=anchored_result,
+        indirect_errors=errors,
     )
 
 
