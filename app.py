@@ -321,6 +321,58 @@ def _save_cached_extraction(image_hash: str, payload: dict) -> None:
     _cache_path_for_hash(image_hash).write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _list_cached_hashes() -> list[str]:
+    return sorted(path.stem for path in app.config["CACHE_FOLDER"].glob("*.json"))
+
+
+def _derive_cached_effect_estimate(payload: dict, comparison_label: str) -> dict[str, float | str]:
+    from lifelines import CoxPHFitter
+    import pandas as pd
+
+    left, right = _parse_comparison_label(comparison_label)
+    canonical_groups = payload.get("canonical_reconstruction", {}).get("groups", [])
+    if not isinstance(canonical_groups, list) or not canonical_groups:
+        raise ValueError("Cached payload is missing canonical reconstructed groups.")
+
+    group_records: dict[str, list[dict]] = {}
+    for group in canonical_groups:
+        group_name = str(group.get("group_name", "")).strip()
+        records = group.get("records", [])
+        if group_name:
+            group_records[group_name] = records if isinstance(records, list) else []
+
+    if left not in group_records or right not in group_records:
+        raise ValueError(
+            f"Cached payload does not contain both groups required by '{comparison_label}'. "
+            f"Available groups: {', '.join(sorted(group_records.keys())) or 'none'}."
+        )
+
+    rows = []
+    for row in group_records[left]:
+        rows.append({"duration": float(row["time"]), "event": int(row["event"]), "arm_left": 1})
+    for row in group_records[right]:
+        rows.append({"duration": float(row["time"]), "event": int(row["event"]), "arm_left": 0})
+
+    if not rows:
+        raise ValueError("Cached payload has no reconstructed records for the requested comparison.")
+
+    dataframe = pd.DataFrame(rows)
+    cox = CoxPHFitter()
+    cox.fit(dataframe, duration_col="duration", event_col="event", formula="arm_left")
+
+    hr = float(cox.hazard_ratios_["arm_left"])
+    ci_table = cox.confidence_intervals_
+    lower_col = next((column for column in ci_table.columns if "lower" in str(column).lower()), None)
+    upper_col = next((column for column in ci_table.columns if "upper" in str(column).lower()), None)
+    if lower_col is None or upper_col is None:
+        raise ValueError("Unable to read confidence interval columns from cached Cox model output.")
+
+    ci_lower = exp(float(ci_table.loc["arm_left", lower_col]))
+    ci_upper = exp(float(ci_table.loc["arm_left", upper_col]))
+    _compute_log_hr_and_se(hr, ci_lower, ci_upper)
+    return {"hr": hr, "ci_lower": ci_lower, "ci_upper": ci_upper, "comparison_label": f"{left} vs {right}"}
+
+
 def _build_auto_logrank(payload: dict) -> dict:
     canonical = payload.get("canonical_reconstruction", {})
     canonical_groups = canonical.get("groups", [])
@@ -562,6 +614,13 @@ def home():
 @app.route("/indirect-comparison", methods=["GET", "POST"])
 def indirect_comparison():
     latest_upload = session.get("latest_upload")
+    latest_upload_hash = None
+    if latest_upload:
+        upload_path = app.config["UPLOAD_FOLDER"] / latest_upload["filename"]
+        if upload_path.exists():
+            latest_upload_hash = image_sha256(upload_path)
+    cached_hashes = _list_cached_hashes()
+
     paper_1 = {
         "title": "Paper 1 title placeholder",
         "authors": "First author et al.",
@@ -574,6 +633,9 @@ def indirect_comparison():
         "hr": 0.82,
         "ci_lower": 0.68,
         "ci_upper": 0.99,
+        "source_mode": "reported",
+        "cached_hash": latest_upload_hash or "",
+        "provenance_note": "Article-reported effect (HR/95% CI entered manually).",
     }
     paper_2 = {
         "title": "Paper 2 title placeholder",
@@ -587,6 +649,9 @@ def indirect_comparison():
         "hr": 1.10,
         "ci_lower": 0.92,
         "ci_upper": 1.31,
+        "source_mode": "reported",
+        "cached_hash": "",
+        "provenance_note": "Article-reported effect (HR/95% CI entered manually).",
     }
 
     errors: list[str] = []
@@ -602,6 +667,39 @@ def indirect_comparison():
                 f"{paper_label}_comparison_label", paper["comparison_label"]
             ).strip()
             paper["endpoint_name"] = request.form.get(f"{paper_label}_endpoint_name", paper["endpoint_name"]).strip()
+            paper["source_mode"] = request.form.get(f"{paper_label}_source_mode", "reported").strip()
+            paper["cached_hash"] = request.form.get(f"{paper_label}_cached_hash", "").strip()
+
+            if paper["source_mode"] not in {"reported", "cached"}:
+                errors.append(f"{paper_label.replace('_', ' ').title()}: unsupported source mode.")
+                continue
+
+            if paper["source_mode"] == "cached":
+                if not paper["cached_hash"]:
+                    errors.append(
+                        f"{paper_label.replace('_', ' ').title()}: choose a cached extraction hash for KM-derived mode."
+                    )
+                    continue
+                cached_payload = _load_cached_extraction(paper["cached_hash"])
+                if cached_payload is None:
+                    errors.append(
+                        f"{paper_label.replace('_', ' ').title()}: no cached extraction found for hash "
+                        f"'{paper['cached_hash']}'."
+                    )
+                    continue
+                try:
+                    cached_effect = _derive_cached_effect_estimate(cached_payload, paper["comparison_label"])
+                    paper["hr"] = float(cached_effect["hr"])
+                    paper["ci_lower"] = float(cached_effect["ci_lower"])
+                    paper["ci_upper"] = float(cached_effect["ci_upper"])
+                except (ValueError, KeyError, TypeError) as exc:
+                    errors.append(f"{paper_label.replace('_', ' ').title()}: {exc}")
+                    continue
+                paper["provenance_note"] = (
+                    f"Derived from cached KM reconstruction (cache hash: {paper['cached_hash']}). "
+                    "No live API call was used."
+                )
+                continue
 
             numeric_fields = (
                 ("hr", "HR"),
@@ -617,10 +715,15 @@ def indirect_comparison():
                         f"{paper_label.replace('_', ' ').title()} {field_label}: please enter a numeric value "
                         "(examples: 0.6, 0.82, 1, 1.25, 0.811001)."
                     )
+            paper["provenance_note"] = "Article-reported effect (HR/95% CI entered manually)."
 
         if not errors:
             try:
                 anchored_result = _run_anchored_indirect_comparison(paper_1, paper_2)
+                anchored_result["provenance_summary"] = (
+                    f"Paper 1 source: {paper_1['provenance_note']} | "
+                    f"Paper 2 source: {paper_2['provenance_note']}"
+                )
             except ValueError as exc:
                 errors.append(str(exc))
 
@@ -631,6 +734,7 @@ def indirect_comparison():
         shared_comparator=anchored_result["comparator"] if anchored_result else "Pending",
         anchored_result=anchored_result,
         indirect_errors=errors,
+        cached_hashes=cached_hashes,
     )
 
 
