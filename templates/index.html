@@ -12,9 +12,6 @@
       <p>
         Flask workflow for Kaplan-Meier figure extraction with an LLM vision API plus manual log-rank testing.
       </p>
-      <p>
-        <a href="{{ url_for('indirect_comparison') }}">Go to Indirect Comparison (Additional Function)</a>
-      </p>
 
       {% if not live_extraction_enabled %}
       <section class="message message-error">
@@ -89,16 +86,21 @@
       </section>
 
       <section class="upload-card">
-        <h2>Cached demo examples</h2>
-        <p>Open a precomputed result package with no live API call.</p>
+        <h2>Final public demo deliverables</h2>
+        <p><strong>This Railway deployment is a cached-output public demo:</strong> no API key is required for public viewing.</p>
+        <ul>
+          <li>Live extraction is disabled in public demo mode.</li>
+          <li>The two KM demos include both the original Kaplan-Meier figure and the processed cached result.</li>
+          <li>Indirect comparison is provided as a separate extra-credit function.</li>
+        </ul>
         <ul>
           {% for example in demo_examples %}
           <li>
             <strong>{{ example.title }}</strong> — {{ example.description }}
             {% if example.available %}
-            <a href="{{ url_for('demo_example', slug=example.slug) }}">Open cached result</a>
+            <a href="{{ example.route }}">Open demo</a>
             {% else %}
-            <span class="small-note">(example not bundled)</span>
+            <span class="small-note">(demo payload/image not bundled yet)</span>
             {% endif %}
           </li>
           {% endfor %}

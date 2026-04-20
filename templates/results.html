@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="container">
-      <h1>Results</h1>
+      <h1>{{ page_heading or "Results" }}</h1>
       {% if demo_mode_notice %}
       <section class="message message-error">
         <strong>Public demo mode:</strong> this deployment is running with cached outputs only (no live API key).
@@ -24,8 +24,15 @@
         <p><strong>p-value:</strong> {{ "%.6f"|format(manual_analysis.p_value) }}</p>
       </section>
       {% else %}
+      {% if original_figure_url %}
       <section class="result-card">
-        <h2>Upload Analysis Summary</h2>
+        <h2>Original Kaplan-Meier Figure</h2>
+        <img src="{{ original_figure_url }}" alt="Original Kaplan-Meier source figure" class="uploaded-image" />
+      </section>
+      {% endif %}
+
+      <section class="result-card">
+        <h2>{{ "Cached Analysis Summary" if original_figure_url else "Upload Analysis Summary" }}</h2>
         <p><strong>Filename:</strong> {{ file_metadata.filename }}</p>
         <p><strong>Overall x-axis max:</strong> {{ metadata_output.overall_x_axis_max if metadata_output else "N/A" }}</p>
         <p><strong>Extraction source:</strong> {{ extraction_source or "unavailable" }}</p>
@@ -35,6 +42,7 @@
         {% endif %}
       </section>
 
+      {% if not original_figure_url %}
       <section class="result-card">
         <h2>Uploaded Kaplan-Meier Figure</h2>
         {% if image_url %}
@@ -43,6 +51,7 @@
         <p>Image preview unavailable.</p>
         {% endif %}
       </section>
+      {% endif %}
 
       <section class="result-card">
         <h2>Compact Analysis Snapshot</h2>

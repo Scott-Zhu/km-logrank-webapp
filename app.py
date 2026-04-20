@@ -38,24 +38,33 @@ app.config["UPLOAD_FOLDER"].mkdir(parents=True, exist_ok=True)
 app.config["CACHE_FOLDER"].mkdir(parents=True, exist_ok=True)
 app.config["DEMO_CACHE_FOLDER"].mkdir(parents=True, exist_ok=True)
 
-DEMO_EXAMPLES = [
+PUBLIC_DEMO_REGISTRY = [
     {
-        "slug": "lung-two-arm",
-        "title": "Two-arm OS example",
-        "description": "Cached two-group Kaplan-Meier reconstruction with a clear separation.",
-        "filename": "lung_two_arm.json",
+        "slug": "km-two-group-low-high",
+        "route": "/demo/km-two-group-low-high",
+        "title": "Two-group KM example",
+        "description": "Cached two-group Kaplan-Meier reconstruction: Group 1 (low risk) vs Group 2 (high risk).",
+        "type": "km",
+        "payload_path": "demo_cache/km_two_group_low_high.json",
+        "image_path": "demo/km_two_group_low_high.png",
     },
     {
-        "slug": "trial-three-arm",
-        "title": "Three-arm OS example",
-        "description": "Cached multi-group reconstruction with pairwise comparisons.",
-        "filename": "trial_three_arm.json",
+        "slug": "km-three-group-p16",
+        "route": "/demo/km-three-group-p16",
+        "title": "Three-group KM example",
+        "description": "Cached multi-group Kaplan-Meier reconstruction: p16-negative, p16-positive, and p16-unknown.",
+        "type": "km",
+        "payload_path": "demo_cache/km_three_group_p16.json",
+        "image_path": "demo/km_three_group_p16.png",
     },
     {
-        "slug": "balanced-two-arm",
-        "title": "Balanced two-arm example",
-        "description": "Cached two-group reconstruction with similar outcomes.",
-        "filename": "balanced_two_arm.json",
+        "slug": "indirect-comparison",
+        "route": "/indirect-comparison",
+        "title": "Indirect comparison example",
+        "description": "Anchored indirect comparison using two published NSCLC trials with shared comparator platinum-based chemotherapy.",
+        "type": "indirect",
+        "payload_path": None,
+        "image_path": None,
     },
 ]
 
@@ -72,26 +81,33 @@ def _is_live_extraction_enabled() -> bool:
 
 
 def _list_demo_examples() -> list[dict[str, str | bool]]:
-    folder = app.config["DEMO_CACHE_FOLDER"]
     rows: list[dict[str, str | bool]] = []
-    for entry in DEMO_EXAMPLES:
-        path = folder / str(entry["filename"])
+    for entry in PUBLIC_DEMO_REGISTRY:
+        payload_path = entry.get("payload_path")
+        available = True
+        if payload_path:
+            available = Path(str(payload_path)).exists()
         rows.append(
             {
                 "slug": str(entry["slug"]),
                 "title": str(entry["title"]),
                 "description": str(entry["description"]),
-                "available": path.exists(),
+                "available": available,
+                "route": str(entry["route"]),
+                "type": str(entry["type"]),
             }
         )
     return rows
 
 
 def _load_demo_payload(slug: str) -> tuple[dict | None, dict | None]:
-    for entry in DEMO_EXAMPLES:
+    for entry in PUBLIC_DEMO_REGISTRY:
         if entry["slug"] != slug:
             continue
-        payload_path = app.config["DEMO_CACHE_FOLDER"] / str(entry["filename"])
+        payload_location = entry.get("payload_path")
+        if not payload_location:
+            return None, entry
+        payload_path = Path(str(payload_location))
         if not payload_path.exists():
             return None, entry
         return json.loads(payload_path.read_text(encoding="utf-8")), entry
@@ -992,9 +1008,11 @@ def results():
         return render_template(
             "results.html",
             mode="manual",
+            page_heading="Results",
             manual_analysis=manual_analysis,
             file_metadata=None,
             image_url=None,
+            original_figure_url=None,
             metadata_output=None,
             metadata_json=None,
         )
@@ -1032,8 +1050,10 @@ def results():
         return render_template(
             "results.html",
             mode="upload",
+            page_heading="Results",
             file_metadata=file_metadata,
             image_url=url_for("uploaded_file", filename=file_metadata["filename"]),
+            original_figure_url=None,
             metadata_output=payload,
             metadata_json=metadata_json,
             auto_logrank=auto_logrank,
@@ -1053,6 +1073,9 @@ def demo_example(slug: str):
     if meta is None:
         flash("Unknown cached demo example.", "error")
         return redirect(url_for("home"))
+    if meta.get("type") != "km":
+        flash("This demo route only supports cached KM examples.", "error")
+        return redirect(url_for("home"))
     if payload is None:
         flash("Cached demo payload is missing in this deployment package.", "error")
         return redirect(url_for("home"))
@@ -1065,8 +1088,10 @@ def demo_example(slug: str):
     return render_template(
         "results.html",
         mode="upload",
+        page_heading=str(meta["title"]),
         file_metadata={"filename": f"{meta['slug']} (precomputed demo)"},
         image_url=None,
+        original_figure_url=url_for("static", filename=str(meta["image_path"])),
         metadata_output=payload,
         metadata_json=json.dumps(payload, indent=2),
         auto_logrank=auto_logrank,
