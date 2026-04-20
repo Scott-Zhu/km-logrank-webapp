@@ -21,6 +21,27 @@
         {% endfor %}
       </section>
       {% endif %}
+      <section class="result-card">
+        <h2>Assumptions & Reliability</h2>
+        <p><strong>Quality label:</strong> <span class="quality-label quality-{{ quality_panel.quality_label|lower }}">{{ quality_panel.quality_label }}</span></p>
+        <ul>
+          {% for check in quality_panel.checks %}
+          <li>
+            <strong>{{ "PASS" if check.passed else "FAIL" }}</strong> — {{ check.label }}
+          </li>
+          {% endfor %}
+        </ul>
+        {% if quality_panel.reasons %}
+        <p class="small-note"><strong>Notes:</strong> {{ quality_panel.reasons|join(" ") }}</p>
+        {% endif %}
+        {% if quality_panel.quality_label == "LOW" %}
+        <p class="small-note"><strong>Estimate policy:</strong> Final indirect estimate is suppressed because quality is LOW.</p>
+        {% elif quality_panel.quality_label == "MEDIUM" %}
+        <p class="small-note"><strong>Estimate policy:</strong> Final indirect estimate is shown, but marked exploratory.</p>
+        {% else %}
+        <p class="small-note"><strong>Estimate policy:</strong> Final indirect estimate is shown (quality HIGH).</p>
+        {% endif %}
+      </section>
 
       <form action="{{ url_for('indirect_comparison') }}" method="post">
 
@@ -110,9 +131,18 @@
         <p><strong>z-score:</strong> {{ "%.4f"|format(anchored_result.z_score) }}</p>
         <p><strong>p-value:</strong> {{ "%.6f"|format(anchored_result.p_value) }}</p>
         <p><strong>Interpretation:</strong> {{ anchored_result.interpretation }}</p>
+        {% if anchored_result.quality_note %}
+        <p class="small-note"><strong>Quality note:</strong> {{ anchored_result.quality_note }}</p>
+        {% endif %}
         <p class="small-note"><strong>Provenance summary:</strong> {{ anchored_result.provenance_summary }}</p>
         {% else %}
-        <p class="small-note">Enter article-provided HR + 95% CI values for both direct comparisons, then click compute.</p>
+        <p class="small-note">
+          {% if quality_panel.quality_label == "LOW" %}
+          Estimate suppressed due to LOW quality assumptions. Resolve the failed checks above to enable calculation.
+          {% else %}
+          Enter article-provided HR + 95% CI values for both direct comparisons, then click compute.
+          {% endif %}
+        </p>
         {% endif %}
       </section>
       <datalist id="cached-hashes">

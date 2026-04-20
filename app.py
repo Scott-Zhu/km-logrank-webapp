@@ -606,6 +606,60 @@ def _run_anchored_indirect_comparison(paper_1: dict, paper_2: dict) -> dict:
     }
 
 
+def _build_indirect_quality_panel(paper_1: dict, paper_2: dict, effect_source_available: bool) -> dict:
+    endpoint_matched = paper_1["endpoint_name"].strip().lower() == paper_2["endpoint_name"].strip().lower()
+
+    comparator_identified = False
+    directions_normalized = False
+    comparator = ""
+    quality_reasons: list[str] = []
+
+    try:
+        left_1, right_1 = _parse_comparison_label(paper_1["comparison_label"])
+        left_2, right_2 = _parse_comparison_label(paper_2["comparison_label"])
+        overlap = {left_1, right_1}.intersection({left_2, right_2})
+        comparator_identified = len(overlap) == 1
+        if comparator_identified:
+            comparator = next(iter(overlap))
+            _normalize_to_comparator(left_1, right_1, 0.0, comparator)
+            _normalize_to_comparator(left_2, right_2, 0.0, comparator)
+            directions_normalized = True
+    except ValueError:
+        comparator_identified = False
+        directions_normalized = False
+
+    if not endpoint_matched:
+        quality_reasons.append("Endpoint mismatch between the two direct comparisons.")
+    if not comparator_identified:
+        quality_reasons.append("Shared comparator is ambiguous or missing.")
+    if not directions_normalized:
+        quality_reasons.append("Treatment directions could not be normalized to a shared comparator.")
+    if not effect_source_available:
+        quality_reasons.append("One or both direct effects are unavailable from the selected source.")
+
+    any_cached = paper_1.get("source_mode") == "cached" or paper_2.get("source_mode") == "cached"
+    if not comparator_identified or not endpoint_matched:
+        quality_label = "LOW"
+    elif any_cached:
+        quality_label = "MEDIUM"
+    else:
+        quality_label = "HIGH"
+
+    return {
+        "checks": [
+            {"label": "Shared comparator identified", "passed": comparator_identified},
+            {"label": "Endpoint matched", "passed": endpoint_matched},
+            {"label": "Treatment direction normalized", "passed": directions_normalized},
+            {"label": "Effect source available", "passed": effect_source_available},
+        ],
+        "quality_label": quality_label,
+        "comparator": comparator or "N/A",
+        "reasons": quality_reasons,
+        "is_exploratory": quality_label == "MEDIUM",
+        "suppress_estimate": quality_label == "LOW",
+    }
+
+
 @app.route("/")
 def home():
     return render_template("index.html", manual_group_a="", manual_group_b="")
@@ -656,8 +710,10 @@ def indirect_comparison():
 
     errors: list[str] = []
     anchored_result = None
+    quality_panel = _build_indirect_quality_panel(paper_1, paper_2, effect_source_available=True)
 
     if request.method == "POST":
+        effect_source_available = True
         for paper_label, paper in (("paper_1", paper_1), ("paper_2", paper_2)):
             paper["title"] = request.form.get(f"{paper_label}_title", paper["title"]).strip() or paper["title"]
             paper["authors"] = request.form.get(f"{paper_label}_authors", paper["authors"]).strip() or paper["authors"]
@@ -672,6 +728,7 @@ def indirect_comparison():
 
             if paper["source_mode"] not in {"reported", "cached"}:
                 errors.append(f"{paper_label.replace('_', ' ').title()}: unsupported source mode.")
+                effect_source_available = False
                 continue
 
             if paper["source_mode"] == "cached":
@@ -679,6 +736,7 @@ def indirect_comparison():
                     errors.append(
                         f"{paper_label.replace('_', ' ').title()}: choose a cached extraction hash for KM-derived mode."
                     )
+                    effect_source_available = False
                     continue
                 cached_payload = _load_cached_extraction(paper["cached_hash"])
                 if cached_payload is None:
@@ -686,6 +744,7 @@ def indirect_comparison():
                         f"{paper_label.replace('_', ' ').title()}: no cached extraction found for hash "
                         f"'{paper['cached_hash']}'."
                     )
+                    effect_source_available = False
                     continue
                 try:
                     cached_effect = _derive_cached_effect_estimate(cached_payload, paper["comparison_label"])
@@ -694,6 +753,7 @@ def indirect_comparison():
                     paper["ci_upper"] = float(cached_effect["ci_upper"])
                 except (ValueError, KeyError, TypeError) as exc:
                     errors.append(f"{paper_label.replace('_', ' ').title()}: {exc}")
+                    effect_source_available = False
                     continue
                 paper["provenance_note"] = (
                     f"Derived from cached KM reconstruction (cache hash: {paper['cached_hash']}). "
@@ -715,17 +775,34 @@ def indirect_comparison():
                         f"{paper_label.replace('_', ' ').title()} {field_label}: please enter a numeric value "
                         "(examples: 0.6, 0.82, 1, 1.25, 0.811001)."
                     )
+                    effect_source_available = False
             paper["provenance_note"] = "Article-reported effect (HR/95% CI entered manually)."
 
+        quality_panel = _build_indirect_quality_panel(paper_1, paper_2, effect_source_available)
+
         if not errors:
-            try:
-                anchored_result = _run_anchored_indirect_comparison(paper_1, paper_2)
-                anchored_result["provenance_summary"] = (
-                    f"Paper 1 source: {paper_1['provenance_note']} | "
-                    f"Paper 2 source: {paper_2['provenance_note']}"
+            if quality_panel["suppress_estimate"]:
+                reasons = quality_panel["reasons"] or [
+                    "Indirect estimate suppressed due to low-quality assumptions."
+                ]
+                errors.append(
+                    "Indirect estimate suppressed (quality LOW): "
+                    + " ".join(reasons)
                 )
-            except ValueError as exc:
-                errors.append(str(exc))
+            else:
+                try:
+                    anchored_result = _run_anchored_indirect_comparison(paper_1, paper_2)
+                    anchored_result["provenance_summary"] = (
+                        f"Paper 1 source: {paper_1['provenance_note']} | "
+                        f"Paper 2 source: {paper_2['provenance_note']}"
+                    )
+                    if quality_panel["is_exploratory"]:
+                        anchored_result["quality_note"] = (
+                            "Quality is MEDIUM because one or both direct effects are KM-cache derived; "
+                            "interpret this indirect estimate as exploratory."
+                        )
+                except ValueError as exc:
+                    errors.append(str(exc))
 
     return render_template(
         "indirect_comparison.html",
@@ -735,6 +812,7 @@ def indirect_comparison():
         anchored_result=anchored_result,
         indirect_errors=errors,
         cached_hashes=cached_hashes,
+        quality_panel=quality_panel,
     )
 
 
